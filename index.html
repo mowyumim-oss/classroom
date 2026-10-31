@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>教室</title>
+<style>
+:root{--fg:#17202b;--panel:rgba(255,255,255,.88);--btn:rgba(255,255,255,.55);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--fg:#e4e9f0;--panel:rgba(18,24,32,.88);--btn:rgba(18,24,32,.55)}}
+:root[data-theme="dark"]{--fg:#e4e9f0;--panel:rgba(18,24,32,.88);--btn:rgba(18,24,32,.55)}
+html,body{height:100%;margin:0;background:#222;color:var(--fg);font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+.box{position:fixed;background:var(--panel);border-radius:8px;padding:8px 12px;font-size:14px}
+.box button{font-size:14px;margin-left:8px;padding:4px 10px;border-radius:6px;border:1px solid var(--fg);background:transparent;color:var(--fg)}
+#held{left:12px;top:calc(env(safe-area-inset-top,0px) + 12px);display:none}
+#bar{right:12px;top:calc(env(safe-area-inset-top,0px) + 12px);display:none}
+#toast{left:50%;top:calc(env(safe-area-inset-top,0px) + 60px);transform:translateX(-50%);opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+#hint{left:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);line-height:1.7}
+#joy,#btns{display:none;position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);touch-action:none}
+#joy{left:24px;width:130px;height:130px;border-radius:50%;background:var(--btn);border:2px solid var(--fg)}
+#knob{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:var(--fg);opacity:.6}
+#btns{right:24px}
+#btns button{display:block;width:80px;height:80px;border-radius:50%;border:2px solid var(--fg);background:var(--btn);color:var(--fg);font-size:17px;touch-action:none}
+.touch #joy,.touch #btns{display:block}
+.touch #hint{display:none}
+.bmode #joy,.bmode #btns,.bmode #hint,.bmode #held,.bmode #who{display:none!important}
+.bmode #bar{display:block}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="held" class="box">手持：板擦<button id="drop">放下</button></div>
+<div id="bar" class="box"><span id="toolname">粉筆</span><button id="swap">改用粉筆</button><button id="exit">離開黑板</button></div>
+<div id="toast" class="box"></div>
+<div id="who" class="box" style="right:12px;top:calc(env(safe-area-inset-top,0px) + 12px)"></div>
+<div id="hint" class="box">W A S D　移動　拖曳或方向鍵　轉動視角<br>E　互動　也可以直接點擊椅子、門、黑板、板擦、時鐘</div>
+<div id="joy"><div id="knob"></div></div>
+<div id="btns"><button id="bi">互動</button></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// 自己的連線層：用 WebSocket 取代 claude.ai 的 room 和 db
+(function(){
+var ws=null,myId=null,connected=false,myPresence={},peerMap={},cache=null,handlers=[],boardCbs=[],lastBoard=null,queue=[];
+function rebuild(){
+  var a=[];
+  Object.keys(peerMap).forEach(function(k){a.push({peer:k,isMe:false,sameTab:false,kind:'viewer',guest:false,by:null,presence:peerMap[k]});});
+  a.push({peer:myId||'me',isMe:true,sameTab:true,kind:'viewer',guest:false,by:null,presence:myPresence});
+  cache=a;
+}
+function send(o){
+  var s=JSON.stringify(o);
+  if(ws&&ws.readyState===1)ws.send(s);
+}
+function snap(doc){return {exists:!!doc,data:function(){return doc;}};}
+function connect(){
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+  ws.onopen=function(){connected=true;send({t:'presence',p:myPresence});};
+  ws.onmessage=function(e){
+    var m;try{m=JSON.parse(e.data);}catch(x){return;}
+    if(m.t==='hello'){
+      myId=m.id;peerMap={};
+      m.peers.forEach(function(q){peerMap[q.peer]=q.presence;});
+      if(m.board){lastBoard=m.board;boardCbs.forEach(function(f){f(snap(m.board));});}
+    }else if(m.t==='presence'){peerMap[m.peer]=m.presence;
+    }else if(m.t==='leave'){delete peerMap[m.peer];
+    }else if(m.t==='emit'){
+      handlers.forEach(function(h){if(h.topic===m.topic)h.fn({topic:m.topic,data:m.data,peer:m.peer,isMe:false,sameTab:false,kind:'viewer'});});
+    }else if(m.t==='board'){lastBoard=m.doc;boardCbs.forEach(function(f){f(snap(m.doc));});}
+    rebuild();
+  };
+  ws.onclose=function(){connected=false;peerMap={};rebuild();setTimeout(connect,2000);};
+  ws.onerror=function(){};
+}
+rebuild();
+var room={
+  peers:function(){return cache;},
+  presence:function(p){for(var k in p)myPresence[k]=p[k];rebuild();send({t:'presence',p:myPresence});return Promise.resolve();},
+  emit:function(topic,data){send({t:'emit',topic:topic,data:data});return Promise.resolve();},
+  on:function(topic,fn){handlers.push({topic:topic,fn:fn});return function(){};}
+};
+var db={doc:function(){return {
+  onSnapshot:function(cb){boardCbs.push(cb);if(lastBoard)cb(snap(lastBoard));return function(){};},
+  set:function(d){send({t:'setboard',doc:d});return Promise.resolve();}
+};}};
+window.claude={use:function(name){return Promise.resolve(name==='room'?room:name==='db'?db:null);}};
+connect();
+})();
+</script>
+<script>
+(function(){
+var canvas=document.getElementById('c');
+if(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches)document.body.classList.add('touch');
+var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+renderer.shadowMap.enabled=true;
+var scene=new THREE.Scene();scene.background=new THREE.Color(0x222222);
+var camera=new THREE.PerspectiveCamera(60,1,0.1,100);
+var H=4.2,BZ=-7,BY=2.15;
+function mat(c,o){return new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.9},o||{}));}
+function box(w,h,d,c,x,y,z,par){var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c));m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;(par||scene).add(m);return m;}
+function pl(w,h,x,y,z,ry,c,basic){var m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),basic?new THREE.MeshBasicMaterial({color:c,side:THREE.DoubleSide}):mat(c,{side:THREE.DoubleSide}));m.position.set(x,y,z);m.rotation.y=ry||0;m.receiveShadow=true;scene.add(m);return m;}
+
+// room shell
+var fl=pl(16,14,0,0,0,0,0xc7b08a);fl.rotation.x=-Math.PI/2;
+var ce=pl(16,14,0,H,0,0,0xf4f4f0);ce.rotation.x=Math.PI/2;
+pl(16,H,0,H/2,-7,0,0xeee8d8);pl(16,H,0,H/2,7,0,0xeee8d8);pl(14,H,8,H/2,0,-Math.PI/2,0xeee8d8);
+function wallW(z0,z1,y0,y1){pl(z1-z0,y1-y0,-8,(y0+y1)/2,(z0+z1)/2,Math.PI/2,0xeee8d8);}
+wallW(-7,-4.9,0,H);wallW(-3.1,4.1,0,H);wallW(5.9,7,0,H);wallW(-4.9,-3.1,3,H);wallW(4.1,5.9,3,H);
+var cf=pl(2,14,-9,0.01,0,0,0x9aa0a6);cf.rotation.x=-Math.PI/2;
+var cc2=pl(2,14,-9,H,0,0,0xdadde0);cc2.rotation.x=Math.PI/2;
+pl(14,H,-10,H/2,0,Math.PI/2,0xb9bfc5);pl(2,H,-9,H/2,-7,0,0xb9bfc5);pl(2,H,-9,H/2,7,0,0xb9bfc5);
+[-4,0,4].forEach(function(z){pl(2.2,1.4,7.97,2.3,z,-Math.PI/2,0xbfe3ff,true);box(0.05,0.06,2.3,0xffffff,7.96,1.6,z);});
+[-3.5,3.5].forEach(function(x){[-3,0.5,4].forEach(function(z){var l=pl(0.5,2.6,x,H-0.01,z,0,0xffffff,true);l.rotation.x=Math.PI/2;});});
+
+scene.add(new THREE.HemisphereLight(0xffffff,0xb8a58a,0.95));
+var sun=new THREE.DirectionalLight(0xffffff,0.45);sun.position.set(4,10,5);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);
+var sc=sun.shadow.camera;sc.left=-10;sc.right=10;sc.top=10;sc.bottom=-10;sc.far=30;scene.add(sun);
+
+// collisions
+var solids=[];
+function solid(x0,x1,z0,z1){solids.push({x0:x0,x1:x1,z0:z0,z1:z1});}
+function blocked(x,z){for(var i=0;i<solids.length;i++){var s=solids[i];if(x>s.x0-.5&&x<s.x1+.5&&z>s.z0-.5&&z<s.z1+.5)return true;}return false;}
+function groundAt(x,z){return z<-4.8?0.25:0;}
+
+// stage, teacher desk, cabinet, bulletin board
+box(16,0.25,2.2,0x8d6e63,0,0.125,-5.9);
+box(2.2,0.9,0.9,0xa87c52,4.5,0.7,-5.9);solid(3.4,5.6,-6.35,-5.45);
+box(0.3,0.05,0.22,0xc0392b,4.0,1.17,-5.9);box(0.18,0.2,0.18,0xeeeeee,5.1,1.25,-5.8);
+box(3,2,0.6,0x7b8a96,-4,1,6.65);solid(-5.5,-2.5,6.35,6.95);
+pl(3,1.4,3,2.1,6.97,Math.PI,0xb98a5a);
+
+// clock
+var kc=document.createElement('canvas');kc.width=kc.height=256;var kx=kc.getContext('2d'),ktex=new THREE.CanvasTexture(kc),lastSec=-1;
+function drawClock(d){
+  kx.clearRect(0,0,256,256);kx.fillStyle='#fff';kx.beginPath();kx.arc(128,128,122,0,6.283);kx.fill();
+  kx.lineWidth=10;kx.strokeStyle='#333';kx.stroke();kx.fillStyle='#222';kx.font='bold 34px sans-serif';kx.textAlign='center';kx.textBaseline='middle';
+  kx.fillText('12',128,38);kx.fillText('3',218,130);kx.fillText('6',128,222);kx.fillText('9',38,130);
+  function hand(v,len,w,c){var a=v*6.283-1.5708;kx.strokeStyle=c;kx.lineWidth=w;kx.lineCap='round';kx.beginPath();kx.moveTo(128,128);kx.lineTo(128+Math.cos(a)*len,128+Math.sin(a)*len);kx.stroke();}
+  var s=d.getSeconds(),mi=d.getMinutes()+s/60,h=(d.getHours()%12)+mi/60;
+  hand(h/12,56,9,'#222');hand(mi/60,84,6,'#222');hand(s/60,92,3,'#c0392b');
+  ktex.needsUpdate=true;
+}
+var clock=new THREE.Mesh(new THREE.CircleGeometry(0.42,48),new THREE.MeshBasicMaterial({map:ktex,transparent:true}));
+clock.position.set(0,3.72,-6.95);clock.userData={kind:'clock'};scene.add(clock);
+
+// blackboard
+var BW=1600,BHc=440,BG='#2d4a3e';
+var bc=document.createElement('canvas');bc.width=BW;bc.height=BHc;var bx=bc.getContext('2d');
+bx.fillStyle=BG;bx.fillRect(0,0,BW,BHc);bx.fillStyle='#fff';bx.textBaseline='top';
+bx.font='bold 84px sans-serif';bx.fillText('歡迎來到教室',70,70);bx.font='46px sans-serif';bx.fillText('拿起板擦，就可以把我擦掉',70,200);
+var btex=new THREE.CanvasTexture(bc);btex.anisotropy=renderer.capabilities.getMaxAnisotropy();
+box(8.3,2.5,0.06,0x8a5a3b,0,BY,-6.97);
+var board=new THREE.Mesh(new THREE.PlaneGeometry(8,2.2),new THREE.MeshBasicMaterial({map:btex}));
+board.position.set(0,BY,-6.93);board.userData={kind:'board'};scene.add(board);
+box(8,0.06,0.2,0x6b4a2d,0,1.0,-6.85);
+[-2.4,-2.2,-2.0].forEach(function(x){box(0.12,0.04,0.04,0xffffff,x,1.05,-6.85);});
+var eraser=box(0.42,0.1,0.16,0x2a2f36,2.2,1.09,-6.85);box(0.42,0.03,0.16,0xe8dfc8,0,0.065,0,eraser);
+var ERX=2.2,ERZ=-6.85;
+
+// desks and chairs
+var pickables=[board,clock,eraser],chairs=[],doors=[];
+eraser.userData={kind:'eraser'};
+[-4.5,-1.5,1.5,4.5].forEach(function(cx){[-2.9,-0.8,1.3,3.4].forEach(function(dz){
+  var g=new THREE.Group();g.position.set(cx,0,dz);scene.add(g);
+  box(1.2,0.06,0.7,0xd9b27c,0,0.75,0,g);
+  [[-.55,-.3],[.55,-.3],[-.55,.3],[.55,.3]].forEach(function(l){box(.05,.72,.05,0x666e78,l[0],.36,l[1],g);});
+  var ch={x:cx,z:dz+0.85};
+  var s=box(.55,.06,.55,0x3d6fb0,0,.45,.85,g),b=box(.55,.45,.06,0x3d6fb0,0,.72,1.16,g);
+  [[-.22,.62],[.22,.62],[-.22,1.08],[.22,1.08]].forEach(function(l){box(.04,.45,.04,0x666e78,l[0],.22,l[1],g);});
+  s.userData={kind:'chair',ref:ch};b.userData={kind:'chair',ref:ch};pickables.push(s,b);chairs.push(ch);
+  solid(cx-.6,cx+.6,dz-.35,dz+.35);solid(cx-.3,cx+.3,dz+.55,dz+1.2);
+});});
+
+// doors (west wall, swing out into the corridor but the way stays closed)
+[-4.9,4.1].forEach(function(zh){
+  var piv=new THREE.Group();piv.position.set(-8,0,zh);scene.add(piv);
+  var d={piv:piv,open:false,z:zh+0.9};
+  var m=box(0.08,3,1.8,0x8a5a3b,0,1.5,0.9,piv);box(0.1,0.12,0.12,0xe0b94a,0.06,1.4,1.55,piv);
+  m.userData={kind:'door',ref:d};pickables.push(m);doors.push(d);
+});
+
+// player
+var player=new THREE.Group();scene.add(player);
+var body=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),mat(0xe8553d,{roughness:.5}));body.castShadow=true;player.add(body);
+var face=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.18,0.05),mat(0x1c1c1c));face.position.set(0,0.2,0.5);player.add(face);
+var heldMesh=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.1,0.16),mat(0x2a2f36));heldMesh.position.y=0.62;heldMesh.visible=false;player.add(heldMesh);
+var p=player.position,facing=0,seat=null,held=false,mode='walk',tool='chalk';
+var yaw=0,pitch=0.45,dist=7;
+function reset(){p.set(0,0.5,5.6);player.scale.setScalar(1);seat=null;facing=0;yaw=0;pitch=0.45;dist=7;player.rotation.y=0;}
+reset();
+
+// ui helpers
+var toast=document.getElementById('toast'),tt=0,bi=document.getElementById('bi');
+function say(t){toast.textContent=t;toast.style.opacity=1;clearTimeout(tt);tt=setTimeout(function(){toast.style.opacity=0;},2000);}
+function dxz(x,z){return Math.hypot(p.x-x,p.z-z);}
+function setHeld(v){held=v;eraser.visible=!v;heldMesh.visible=v;document.getElementById('held').style.display=v?'block':'none';}
+
+// actions
+function sit(c){seat=c;player.scale.setScalar(0.6);p.set(c.x,0.78,c.z);facing=Math.PI;player.rotation.y=facing;yaw=0;bi.textContent='站起來';}
+function stand(){player.scale.setScalar(1);p.set(seat.x+1.5,0.5,seat.z);seat=null;bi.textContent='互動';}
+function actChair(c){
+  if(seat){say('先站起來才能換位子');return;}
+  if(dxz(c.x,c.z)>2.6){say('走近椅子再點');return;}
+  var ci=chairs.indexOf(c);
+  if(room&&room.peers().some(function(q){return !q.isMe&&q.presence&&q.presence.s===ci;})){say('這個位子有人坐了');return;}
+  sit(c);say('坐下了，按 E 或「站起來」離開座位');
+}
+function actDoor(d){
+  if(dxz(-8,d.z)>3.4){say('走近門再開');return;}
+  d.open=!d.open;say(d.open?'門開了，外面是走廊（不開放）':'門關上了');
+}
+function actClock(){var d=new Date();say('現在時間 '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2));}
+function actEraser(){
+  if(held)return;
+  if(seat||dxz(ERX,ERZ)>3.4){say('走近黑板前的粉筆槽再拿');return;}
+  setHeld(true);say('拿到板擦了，到黑板前互動就能擦');
+}
+function setTool(t){tool=t;document.getElementById('toolname').textContent=t==='chalk'?'粉筆':'板擦';document.getElementById('swap').textContent=t==='chalk'?'改用板擦':'改用粉筆';}
+function actBoard(){
+  if(!seat&&dxz(0,BZ)>8){say('再走近黑板一點');return;}
+  mode='board';player.visible=false;document.body.classList.add('bmode');
+  setTool(held?'eraser':'chalk');document.getElementById('swap').style.display=held?'':'none';
+}
+function exitBoard(){mode='walk';player.visible=true;document.body.classList.remove('bmode');}
+function interact(){
+  if(mode==='board'){exitBoard();return;}
+  if(seat){stand();return;}
+  var best=null,bs=99;
+  function c(s,f){if(s<bs){bs=s;best=f;}}
+  chairs.forEach(function(ch){var d=dxz(ch.x,ch.z);if(d<2.2)c(d,function(){actChair(ch);});});
+  doors.forEach(function(dr){var d=dxz(-8,dr.z);if(d<3.2)c(d,function(){actDoor(dr);});});
+  if(!held){var de=dxz(ERX,ERZ);if(de<3.2)c(de,actEraser);}
+  var db=Math.hypot(Math.max(0,Math.abs(p.x)-4),p.z-BZ)+2;if(db<8)c(db,actBoard);
+  if(best)best();else say('附近沒有可以互動的東西');
+}
+
+// picking and drawing
+var ray=new THREE.Raycaster(),v2=new THREE.Vector2();
+function aim(x,y){v2.set(x/window.innerWidth*2-1,-(y/window.innerHeight)*2+1);ray.setFromCamera(v2,camera);}
+function tap(x,y){
+  if(mode!=='walk')return;
+  aim(x,y);var h=ray.intersectObjects(pickables,false);if(!h.length)return;
+  var u=h[0].object.userData;
+  if(u.kind==='chair')actChair(u.ref);else if(u.kind==='door')actDoor(u.ref);else if(u.kind==='clock')actClock();
+  else if(u.kind==='eraser')actEraser();else if(u.kind==='board')actBoard();
+}
+var last=null;
+function boardPt(x,y){aim(x,y);var h=ray.intersectObject(board,false);return h.length?{x:h[0].uv.x*BW,y:(1-h[0].uv.y)*BHc}:null;}
+function strokeTo(a,b,tl){
+  tl=tl||tool;bx.lineCap='round';bx.lineJoin='round';
+  if(tl==='chalk'){
+    bx.strokeStyle='rgba(255,255,255,.22)';bx.lineWidth=9;bx.beginPath();bx.moveTo(a.x,a.y);bx.lineTo(b.x+.01,b.y);bx.stroke();
+    bx.strokeStyle='rgba(255,255,255,.95)';bx.lineWidth=4.5;
+  }else{bx.strokeStyle=BG;bx.lineWidth=64;}
+  bx.beginPath();bx.moveTo(a.x,a.y);bx.lineTo(b.x+.01,b.y);bx.stroke();btex.needsUpdate=true;
+}
+
+// input
+var keys={},joy={x:0,y:0},joyId=null,drag=null;
+window.addEventListener('keydown',function(e){
+  keys[e.code]=true;
+  if(e.code==='KeyR'&&mode==='walk')reset();
+  if(e.code==='KeyE'&&!e.repeat)interact();
+  if(e.code==='Escape'&&mode==='board')exitBoard();
+  if(e.code.indexOf('Arrow')===0)e.preventDefault();
+});
+window.addEventListener('keyup',function(e){keys[e.code]=false;});
+window.addEventListener('blur',function(){keys={};});
+canvas.addEventListener('pointerdown',function(e){
+  canvas.setPointerCapture(e.pointerId);
+  if(mode==='board'){last=boardPt(e.clientX,e.clientY);if(last)drawLocal(last,last);drag={id:e.pointerId};return;}
+  drag={id:e.pointerId,x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY,t:performance.now()};
+});
+canvas.addEventListener('pointermove',function(e){
+  if(!drag||e.pointerId!==drag.id)return;
+  if(mode==='board'){var q=boardPt(e.clientX,e.clientY);if(q&&last)drawLocal(last,q);last=q;return;}
+  yaw-=(e.clientX-drag.x)*0.006;pitch=Math.max(0.05,Math.min(1.4,pitch+(e.clientY-drag.y)*0.006));drag.x=e.clientX;drag.y=e.clientY;
+});
+function dragEnd(e){
+  if(drag&&e.pointerId===drag.id){
+    if(mode==='walk'&&e.type==='pointerup'&&Math.hypot(e.clientX-drag.sx,e.clientY-drag.sy)<8&&performance.now()-drag.t<400)tap(e.clientX,e.clientY);
+    drag=null;last=null;
+  }
+}
+canvas.addEventListener('pointerup',dragEnd);canvas.addEventListener('pointercancel',dragEnd);
+canvas.addEventListener('wheel',function(e){e.preventDefault();dist=Math.max(3,Math.min(12,dist+e.deltaY*0.01));},{passive:false});
+var jb=document.getElementById('joy'),kn=document.getElementById('knob');
+function joyMove(e){
+  var r=jb.getBoundingClientRect(),R=r.width/2-10,dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),m=Math.hypot(dx,dy);
+  if(m>R){dx*=R/m;dy*=R/m;}joy.x=dx/R;joy.y=dy/R;kn.style.transform='translate('+dx+'px,'+dy+'px)';
+}
+jb.addEventListener('pointerdown',function(e){joyId=e.pointerId;jb.setPointerCapture(e.pointerId);joyMove(e);});
+jb.addEventListener('pointermove',function(e){if(e.pointerId===joyId)joyMove(e);});
+function joyEnd(e){if(e.pointerId===joyId){joyId=null;joy.x=0;joy.y=0;kn.style.transform='translate(0,0)';}}
+jb.addEventListener('pointerup',joyEnd);jb.addEventListener('pointercancel',joyEnd);
+bi.addEventListener('pointerdown',function(e){e.preventDefault();interact();});
+document.getElementById('drop').addEventListener('click',function(){setHeld(false);say('板擦放回粉筆槽了');});
+document.getElementById('exit').addEventListener('click',exitBoard);
+document.getElementById('swap').addEventListener('click',function(){setTool(tool==='chalk'?'eraser':'chalk');});
+document.addEventListener('contextmenu',function(e){e.preventDefault();});
+function resize(){var w=window.innerWidth,h=window.innerHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+window.addEventListener('resize',resize);resize();
+
+function tryMove(nx,nz){
+  nx=Math.max(-7.5,Math.min(7.5,nx));nz=Math.max(-6.5,Math.min(6.5,nz));
+  var inb=blocked(p.x,p.z);
+  if(!blocked(nx,p.z)||inb)p.x=nx;
+  if(!blocked(p.x,nz)||inb)p.z=nz;
+}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+// multiplayer: other players are drawn from room presence; the page works alone if there is no room
+var room=null,myName='玩家'+(100+Math.floor(Math.random()*900)),others={},sentAt=0,lastSent='',whoEl=document.getElementById('who'),whoTxt='';
+try{if(window.claude&&window.claude.use)window.claude.use('room').then(function(r){room=r;if(r)hookBoard(r);}).catch(function(){});}catch(e){}
+function labelTex(t){var c=document.createElement('canvas');c.width=256;c.height=64;var x=c.getContext('2d');x.fillStyle='rgba(0,0,0,.55)';x.fillRect(0,0,256,64);x.fillStyle='#fff';x.font='bold 34px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(t,128,34);return new THREE.CanvasTexture(c);}
+function hue(t){var h=0;for(var i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))%360;return h;}
+function makeOther(peer,name){
+  var g=new THREE.Group();scene.add(g);
+  var m=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),mat(new THREE.Color().setHSL(hue(peer)/360,0.65,0.55).getHex(),{roughness:.5}));m.castShadow=true;g.add(m);
+  var f=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.18,0.05),mat(0x1c1c1c));f.position.set(0,0.2,0.5);m.add(f);
+  var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:labelTex(name),depthTest:false}));sp.scale.set(1.6,0.4,1);sp.renderOrder=5;g.add(sp);
+  return {g:g,m:m,sp:sp,name:name,init:false};
+}
+function syncPeers(dt){
+  var count=0,seen={},me=null,list=room?room.peers():[],idx=seat?chairs.indexOf(seat):-1;
+  list.forEach(function(q){if(q.isMe&&q.sameTab)me=q;});
+  if(room){
+    var st=Math.round(p.x*50)+'|'+Math.round(p.z*50)+'|'+Math.round(facing*20)+'|'+idx;
+    if(st!==lastSent&&performance.now()-sentAt>100){
+      lastSent=st;sentAt=performance.now();
+      room.presence({n:myName,x:Math.round(p.x*100)/100,z:Math.round(p.z*100)/100,f:Math.round(facing*100)/100,s:idx}).catch(function(){});
+    }
+  }
+  list.forEach(function(q){
+    if(q.isMe||q.kind!=='viewer')return;
+    count++;seen[q.peer]=1;
+    var pr=q.presence||{};if(typeof pr.x!=='number'||typeof pr.z!=='number')return;
+    if(seat&&me&&pr.s===idx&&q.peer<me.peer){stand();say('這個位子被別人先坐了');}
+    var nm=typeof pr.n==='string'?pr.n.slice(0,12):'玩家',o=others[q.peer];
+    if(!o)o=others[q.peer]=makeOther(q.peer,nm);
+    if(o.name!==nm){o.sp.material.map=labelTex(nm);o.sp.material.needsUpdate=true;o.name=nm;}
+    var tx=pr.x,tz=pr.z,ty=groundAt(pr.x,pr.z)+0.5,sc=1,tf=typeof pr.f==='number'?pr.f:0;
+    if(typeof pr.s==='number'&&pr.s>=0&&chairs[pr.s]){tx=chairs[pr.s].x;tz=chairs[pr.s].z;ty=0.78;sc=0.6;tf=Math.PI;}
+    if(!o.init){o.g.position.set(tx,ty,tz);o.init=true;}
+    var k=Math.min(1,10*dt),gp=o.g.position;
+    gp.x+=(tx-gp.x)*k;gp.y+=(ty-gp.y)*k;gp.z+=(tz-gp.z)*k;
+    o.m.scale.setScalar(sc);
+    o.m.rotation.y+=Math.atan2(Math.sin(tf-o.m.rotation.y),Math.cos(tf-o.m.rotation.y))*k;
+    o.sp.position.y=sc===1?0.95:0.7;
+  });
+  Object.keys(others).forEach(function(k){if(!seen[k]){scene.remove(others[k].g);delete others[k];}});
+  var t=room?myName+'　線上 '+(count+1)+' 人':myName+'　單人模式';
+  if(t!==whoTxt){whoTxt=t;whoEl.textContent=t;}
+}
+// blackboard sync: strokes travel live through the room, a snapshot in db serves late joiners
+var sid=Math.random().toString(36).slice(2,8),segs=[],flushT=0,snapT=0,lastAct=-1e9,saving=false,dirty=false,warned=false,boardRef=null;
+function drawLocal(a,b){
+  strokeTo(a,b);lastAct=performance.now();dirty=true;
+  segs.push([tool==='chalk'?0:1,Math.round(a.x),Math.round(a.y),Math.round(b.x),Math.round(b.y)]);
+  if(!flushT)flushT=setTimeout(flushSegs,100);
+  clearTimeout(snapT);snapT=setTimeout(saveBoard,2000);
+}
+function onSendErr(e){if(e&&e.code==='not_permitted'&&!warned){warned=true;say('你目前只有觀看權限，寫的字別人看不到');}}
+function flushSegs(){
+  flushT=0;var out=segs;segs=[];
+  if(!room)return;
+  for(var i=0;i<out.length;i+=100)room.emit('board',{s:out.slice(i,i+100)}).catch(onSendErr);
+}
+function cl(v,m){return Math.max(0,Math.min(m,v));}
+function hookBoard(r){
+  r.on('board',function(m){
+    if(m.isMe&&m.sameTab)return;
+    var d=m.data;if(!d||!Array.isArray(d.s))return;
+    d.s.slice(0,100).forEach(function(g){
+      if(!Array.isArray(g)||g.length!==5)return;
+      var n=g.map(Number);if(!n.every(isFinite))return;
+      strokeTo({x:cl(n[1],BW),y:cl(n[2],BHc)},{x:cl(n[3],BW),y:cl(n[4],BHc)},n[0]?'eraser':'chalk');
+    });
+    lastAct=performance.now();
+  },function(){});
+}
+function saveBoard(){
+  snapT=0;
+  if(!boardRef||!dirty)return;
+  if(saving){snapT=setTimeout(saveBoard,1000);return;}
+  var url=bc.toDataURL('image/jpeg',0.75);
+  if(url.length>230000){var t=document.createElement('canvas');t.width=800;t.height=220;t.getContext('2d').drawImage(bc,0,0,800,220);url=t.toDataURL('image/jpeg',0.7);}
+  if(url.length>230000)return;
+  saving=true;dirty=false;
+  boardRef.set({img:url,by:sid,at:Date.now()}).catch(function(){}).then(function(){saving=false;});
+}
+function applySnap(snap){
+  if(!snap.exists)return;
+  var d=snap.data();
+  if(!d||typeof d.img!=='string'||d.img.indexOf('data:image/jpeg;base64,')!==0||d.by===sid)return;
+  if(performance.now()-lastAct<3000)return;
+  var im=new Image();im.onload=function(){bx.drawImage(im,0,0,BW,BHc);btex.needsUpdate=true;};im.src=d.img;
+}
+try{if(window.claude&&window.claude.use)window.claude.use('db').then(function(d){if(!d)return;boardRef=d.doc('classroom/board');boardRef.onSnapshot(applySnap,function(){});}).catch(function(){});}catch(e){}
+var clk=new THREE.Clock(),bcam=new THREE.Vector3(),bt=new THREE.Vector3(0,BY,BZ+0.07);
+function tick(){
+  var dt=Math.min(clk.getDelta(),0.05),now=new Date();
+  if(now.getSeconds()!==lastSec){lastSec=now.getSeconds();drawClock(now);}
+  doors.forEach(function(d){d.piv.rotation.y+=((d.open?-Math.PI/2:0)-d.piv.rotation.y)*Math.min(1,6*dt);});
+  if(mode==='walk'){
+    if(keys.ArrowLeft)yaw+=1.8*dt;if(keys.ArrowRight)yaw-=1.8*dt;
+    if(keys.ArrowUp)pitch=Math.min(1.4,pitch+1.2*dt);if(keys.ArrowDown)pitch=Math.max(0.05,pitch-1.2*dt);
+    var f=(keys.KeyW?1:0)-(keys.KeyS?1:0)-joy.y,r=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x,m=Math.hypot(f,r);
+    if(m>1){f/=m;r/=m;m=1;}
+    if(seat){if(m>0.5)stand();}
+    else{
+      if(m>0.08){
+        var dx=-Math.sin(yaw)*f+Math.cos(yaw)*r,dz=-Math.cos(yaw)*f-Math.sin(yaw)*r;
+        tryMove(p.x+dx*4.5*dt,p.z+dz*4.5*dt);
+        var tg=Math.atan2(dx,dz),df=Math.atan2(Math.sin(tg-facing),Math.cos(tg-facing));
+        facing+=df*Math.min(1,12*dt);player.rotation.y=facing;
+      }
+      var feet=p.y-0.5;feet+=(groundAt(p.x,p.z)-feet)*Math.min(1,14*dt);p.y=feet+0.5;
+    }
+    camera.up.set(0,1,0);
+    var cx=p.x+Math.sin(yaw)*Math.cos(pitch)*dist,cy=p.y+Math.sin(pitch)*dist,cz=p.z+Math.cos(yaw)*Math.cos(pitch)*dist;
+    camera.position.set(clamp(cx,-7.7,7.7),clamp(cy,0.4,H-0.3),clamp(cz,-6.8,6.8));
+    camera.lookAt(p.x,p.y,p.z);
+  }else{
+    var portrait=camera.aspect<1,d=portrait?7.4:Math.min(9,Math.max(2.4,8.5/(camera.aspect*1.1547)));
+    camera.up.set(portrait?-1:0,portrait?0:1,0);
+    bcam.set(0,BY,BZ+d);camera.position.lerp(bcam,Math.min(1,10*dt));camera.lookAt(bt);
+  }
+  syncPeers(dt);
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+tick();
+})();
+</script>
+</body>
+</html>
