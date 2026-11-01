@@ -107,6 +107,9 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #cpanel,#tbl{box-shadow:0 12px 32px rgba(36,49,58,.2)}
 #cbtn{font-weight:700}
 @media(max-width:600px){#hint{font-size:12px}.box{border-radius:12px}#who{font-size:13px}}
+#pbox{left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translateX(-50%);display:none;padding:6px;z-index:15}
+.touch #pbox{bottom:calc(env(safe-area-inset-bottom,0px) + 180px)}
+.bmode #pbox,.gmode #pbox{display:none!important}
 </style>
 </head>
 <body>
@@ -120,10 +123,11 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 <div id="who" class="box" title="點一下可以改暱稱" style="right:12px;top:calc(env(safe-area-inset-top,0px) + 12px)"></div>
 <button id="cbtn" class="box">造型</button>
 <div id="cpanel" class="box"><div class="ttl">形狀</div><div class="row" id="shrow"></div><div class="ttl">顏色</div><div class="row" id="cwrow"></div></div>
-<div id="hint" class="box">W A S D　移動　拖曳或方向鍵　轉動視角<br>E　互動　也可以直接點擊椅子、門、窗戶、黑板、板擦、時鐘、毯子（大老二）<br>空白鍵　跳躍　R　回到教室起點<br>點名時，叫到你的名字就按左上角「到」（或空白鍵）</div>
+<div id="hint" class="box">W A S D　移動　拖曳或方向鍵　轉動視角<br>E　互動　也可以直接點擊椅子、門、窗戶、黑板、板擦、時鐘、毯子（大老二）<br>空白鍵　跳躍　R　回到教室起點<br>馬桶：點擊或按 E 坐下，坐著按「大號」，起來後再互動就能沖水<br>點名時，叫到你的名字就按左上角「到」（或空白鍵）</div>
 <div id="joy"><div id="knob"></div></div>
 <div id="btns"><button id="bj">跳</button><button id="bi">互動</button></div>
 <div id="wbox" class="box"><button id="wtog" class="pbtn" type="button">開窗</button><button id="wgo" class="pbtn main" type="button">翻出窗外</button></div>
+<div id="pbox" class="box"><button id="poo" class="pbtn main" type="button">大號</button></div>
 <div id="nickdlg"><div class="dcard"><h2>你的暱稱</h2><p>最多 7 個字，不能和線上的人重複。</p><input id="nickin" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-label="暱稱"><div id="nickerr" role="alert"></div><div class="acts"><button id="nickok" class="pbtn main">進入教室</button><button id="nickcancel" class="pbtn" style="display:none">取消</button></div></div></div>
 <div id="tbl"></div>
 <div id="gp"></div>
@@ -132,7 +136,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 <script>
 // 自己的連線層：用 WebSocket 取代 claude.ai 的 room 和 db
 (function(){
-var ws=null,myId=null,connected=false,myPresence={},peerMap={},cache=null,handlers=[],boardCbs=[],lastBoards=[],nick=null,tryNick=null,nickFn=null,btFn=null,lastBt=null,winFn=null,lastWin=null,tinfoFn=null,lastTinfo=null,tchFn=null,lastTch=null,qFn=null,qsFn=null,lastQs=null,rollFn=null,bellFn=null;
+var ws=null,myId=null,connected=false,myPresence={},peerMap={},cache=null,handlers=[],boardCbs=[],lastBoards=[],nick=null,tryNick=null,nickFn=null,btFn=null,lastBt=null,winFn=null,lastWin=null,tinfoFn=null,lastTinfo=null,tchFn=null,lastTch=null,qFn=null,qsFn=null,lastQs=null,rollFn=null,bellFn=null,toiFn=null,lastToi=null,flushFn=null,janFn=null,lastJan=null;
 function rebuild(){
   var a=[];
   Object.keys(peerMap).forEach(function(k){a.push({peer:k,isMe:false,sameTab:false,kind:'viewer',guest:false,by:null,presence:peerMap[k]});});
@@ -166,7 +170,10 @@ function connect(){
     }else if(m.t==='q'){if(qFn)qFn(m.q);
     }else if(m.t==='qs'){lastQs=m.qs;if(qsFn)qsFn(m.qs);
     }else if(m.t==='roll'){if(rollFn)rollFn(m);
-    }else if(m.t==='bell'){if(bellFn)bellFn(m);}
+    }else if(m.t==='bell'){if(bellFn)bellFn(m);
+    }else if(m.t==='toi'){if(!m.err)lastToi=m;if(toiFn)toiFn(m);
+    }else if(m.t==='flush'){if(flushFn)flushFn(m);
+    }else if(m.t==='jan'){lastJan=m;if(janFn)janFn(m);}
     rebuild();
   };
   ws.onclose=function(){connected=false;peerMap={};rebuild();setTimeout(connect,2000);};
@@ -199,7 +206,7 @@ window.net={
   onQs:function(f){qsFn=f;if(lastQs)f(lastQs);},
   onRoll:function(f){rollFn=f;},
   onBell:function(f){bellFn=f;},
-  here:function(){send({t:'here'});}
+  here:function(){send({t:'here'});},id:function(){return myId;},toi:function(o){o.t='toi';send(o);},onToi:function(f){toiFn=f;if(lastToi)f(lastToi);},onFlush:function(f){flushFn=f;},onJan:function(f){janFn=f;if(lastJan)f(lastJan);}
 };
 connect();
 })();
@@ -212,7 +219,7 @@ var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
 renderer.shadowMap.enabled=true;
 var scene=new THREE.Scene();scene.background=new THREE.Color(0xa6d6f2);
-var camera=new THREE.PerspectiveCamera(60,1,0.1,100);
+var camera=new THREE.PerspectiveCamera(60,1,0.25,120);
 var H=4.2,BZ=-7,BY=2.15;
 function mat(c,o){return new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.9},o||{}));}
 function box(w,h,d,c,x,y,z,par){var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c));m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;(par||scene).add(m);return m;}
@@ -228,7 +235,7 @@ fl2(-8,8,-7,7,0xc7b08a);fl2(-8,8,7,21,0xc9b690);fl2(-8,8,21,35,0xbfae8c);fl2(-8,
 var A1=scene.children.length;[-3.5,3.5].forEach(function(x){[-3,0.5,4].forEach(function(z){var l=pl(0.5,2.6,x,H-0.01,z,0,0xffffff,true);l.rotation.x=Math.PI/2;});});
 
 scene.add(new THREE.HemisphereLight(0xffffff,0xb8a58a,0.95));
-var sun=new THREE.DirectionalLight(0xffffff,0.45);sun.position.set(4,10,5);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);
+var sun=new THREE.DirectionalLight(0xffffff,0.45);sun.position.set(4,10,5);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.bias=-0.0006;sun.shadow.normalBias=0.03;
 var sc=sun.shadow.camera;sc.left=-14;sc.right=14;sc.top=14;sc.bottom=-14;sc.far=40;scene.add(sun);scene.add(sun.target);
 
 // collisions
@@ -364,9 +371,13 @@ function fb(x,z,w,d,hh,c){box(w,hh,d,c,x,hh/2,z);solid(x-w/2,x+w/2,z-d/2,z+d/2);
 // office
 [-5.5,-2,1.5,5].forEach(function(x){fb(x,-12.8,1.8,0.9,0.75,0xd9b27c);});
 fb(0,-14.6,8,0.6,2,0x7b8a96);
-// toilet
-[-0.5,2.5,5.5,8].forEach(function(x){if(x<8){box(0.08,2,1.6,0xcfd8dc,x+1.5,1,-20.1);solid(x+1.46,x+1.54,-20.9,-19.3);}});
-[0.25,3.25].forEach(function(x){box(0.5,0.4,0.6,0xffffff,x+1.5,0.2,-20.5);});box(0.5,0.4,0.6,0xffffff,6.75,0.2,-20.5);
+// toilet: three bowls along the north wall, no stalls or doors
+var toilets=[],TS=[{},{},{}],tseat=-1,tUp=0;
+[0,3,6].forEach(function(x,i){var g=new THREE.Group();g.position.set(x,0,-20.45);scene.add(g);
+  var parts=[box(.5,.35,.6,0xffffff,0,.175,0,g),box(.56,.05,.56,0xf2f2f2,0,.38,.03,g),box(.5,.5,.18,0xffffff,0,.6,-.28,g),box(.08,.05,.08,0xb0b6bb,.18,.88,-.28,g)];
+  var poop=new THREE.Mesh(new THREE.SphereGeometry(.1,10,8),mat(0x6b4423));poop.position.set(0,.4,.05);poop.scale.set(1.2,.7,1.2);poop.visible=false;g.add(poop);
+  parts.forEach(function(m){m.userData={kind:'toilet',ref:i};pickables.push(m);});
+  toilets.push({x:x,z:-20.45,g:g,poop:poop});solid(x-.28,x+.28,-20.8,-20.2);});
 fb(-3.5,-15.5,5,0.6,0.9,0xb3d4e0);pl(4.6,1,-3.5,1.9,-15.12,0,0xdff3fa);
 // stairwell: U-shaped stairs, entered from the corridor side (no door); the top exits to the 2F corridor side
 sign('樓梯間',-8.03,38,-Math.PI/2);
@@ -382,7 +393,7 @@ var cq=pl(16,6,0,2*H,38,0,0xf4f4f0);cq.rotation.x=Math.PI/2;
   if(m.position.x<-12)continue;
   if(pm.width===1.5&&pm.height===0.375)continue;
   if(m.position.z===38&&m.position.y===0&&pm.width===16&&pm.height===6)continue;
-  var c=m.clone();c.position.y+=H;scene.add(c);}}
+  var c=m.clone();c.position.y+=H+((m.position.y===0&&m.rotation.x<-1)?0.02:0);scene.add(c);}}
  cp(A0,A1);cp(B0,B1);})();
 // rooms for the camera
 var ROOMS=[[-11,-8,-21,41],[-8,8,-7,7],[-8,8,7,21],[-8,8,21,35],[-8,8,35,41],[-8,8,-15,-7],[-8,8,-21,-15]];
@@ -403,7 +414,7 @@ var wins=[];
 box(19.4,0.3,62.4,0xd8d8d2,-1.5,2*H+0.2,10).castShadow=false;
 var gr=pl(160,160,0,-0.02,10,0,0x6fae4f);gr.rotation.x=-Math.PI/2;
 function oval(r0,r1,col,y){var g=new THREE.Mesh(r0?new THREE.RingGeometry(r0,r1,64):new THREE.CircleGeometry(r1,64),new THREE.MeshStandardMaterial({color:col,roughness:1}));g.rotation.x=-Math.PI/2;g.scale.set(1,2.4,1);g.position.set(24,y,10);g.receiveShadow=true;scene.add(g);}
-oval(0,9,0x86c463,0.0);oval(9,12,0xc4553d,0.01);oval(10.45,10.55,0xffffff,0.02);
+oval(0,9,0x86c463,0.03);oval(9,12,0xc4553d,0.06);oval(10.45,10.55,0xffffff,0.09);
 var osol=[];
 function tree(x,z){box(0.4,2,0.4,0x7b5a3a,x,1,z);var t=new THREE.Mesh(new THREE.SphereGeometry(1.5,12,10),mat(0x3f8f45));t.position.set(x,3.2,z);t.castShadow=true;scene.add(t);osol.push([x,z,0.9]);}
 [[13,-30],[13,30],[-15,-12],[-15,14],[-24,0],[30,-34],[30,34],[-30,-30],[-30,30],[11,18]].forEach(function(q){tree(q[0],q[1]);});
@@ -482,7 +493,7 @@ document.getElementById('cbtn').addEventListener('click',function(){
 setLook(look.h,look.c);
 var p=player.position,facing=0,seat=null,held=false,mode='walk',tool='chalk',vault=null,air=false,vy=0,jumpReq=false,heldR=0;
 var yaw=0,pitch=0.45,dist=7;
-function reset(){vault=null;air=false;vy=0;p.set(0,0.5,5.6);player.scale.setScalar(1);seat=null;facing=0;yaw=0;pitch=0.45;dist=7;player.rotation.y=0;}
+function reset(){if(tseat>=0){tseat=-1;net.toi({a:'up'});}vault=null;air=false;vy=0;p.set(0,0.5,5.6);player.scale.setScalar(1);seat=null;facing=0;yaw=0;pitch=0.45;dist=7;player.rotation.y=0;}
 reset();
 
 // ui helpers
@@ -491,7 +502,23 @@ function say(t){toast.textContent=t;toast.style.opacity=1;clearTimeout(tt);tt=se
 function dxz(x,z){return Math.hypot(p.x-x,p.z-z);}
 function setHeld(v){held=v;erasers[heldR].visible=!v;heldMesh.visible=v;document.getElementById('held').style.display=v?'block':'none';}
 
-// windows
+// toilet actions
+var pboxEl=document.getElementById('pbox');
+function updPbox(){pboxEl.style.display=(tseat>=0&&TS[tseat]&&!TS[tseat].p)?'block':'none';}
+function actToilet(i){
+  if(tseat>=0)return;
+  if(!nickOK){say('先設定暱稱');return;}
+  if(seat||bseat>=0){say('先站起來');return;}
+  if(held){say('先把板擦放下');return;}
+  var t=toilets[i];if(dxz(t.x,t.z)>2.4){say('走近馬桶再操作');return;}
+  var st=TS[i]||{};
+  if(st.o){say('有人在用');return;}
+  if(st.p){net.toi({a:'flush',i:i});return;}
+  net.toi({a:'sit',i:i});
+}
+function sitT(i){tseat=i;seat=null;player.scale.setScalar(0.6);p.set(toilets[i].x,0.7,toilets[i].z+0.1);facing=0;player.rotation.y=0;yaw=0;pitch=0.5;bi.textContent='站起來';updPbox();say('坐下了，可以按「大號」');}
+function standT(){var t=toilets[tseat];tseat=-1;tUp=performance.now();player.scale.setScalar(1);p.set(t.x,0.5,t.z+1.3);bi.textContent='互動';updPbox();}
+document.getElementById('poo').addEventListener('click',function(){net.toi({a:'poo'});});
 var wbox=document.getElementById('wbox'),wt=document.getElementById('wtog'),wg=document.getElementById('wgo'),nw=null;
 function winFree(){return mode==='walk'&&!seat&&bseat<0&&!vault&&p.y<2.6;}
 function toggleWin(w){
@@ -556,11 +583,13 @@ function interact(){
   if(seat){stand();return;}
   if(bseat>=0){leaveTable();return;}
   if(p.y-0.5>2){say('二樓教室還在施工中');return;}
+  if(tseat>=0){standT();net.toi({a:'up'});return;}
   var best=null,bs=99;
   function c(s,f){if(s<bs){bs=s;best=f;}}
   wins.forEach(function(w){var d=Math.hypot(p.x-w.x,p.z-w.z);if(d<3.0)c(d-0.5,function(){actWin(w);});});
   if(outs()){doors.forEach(function(dr){var d=dxz(dr.x,dr.z);if(d<3.2)c(d,function(){actDoor(dr);});});if(best)best();else say('附近沒有可以互動的東西');return;}
   chairs.forEach(function(ch){var d=dxz(ch.x,ch.z);if(d<2.2)c(d,function(){actChair(ch);});});
+  toilets.forEach(function(t,i){var d=dxz(t.x,t.z);if(d<2.3)c(d,function(){actToilet(i);});});
   doors.forEach(function(dr){var d=dxz(dr.x,dr.z);if(d<3.2)c(d,function(){actDoor(dr);});});
   if(!held)erasers.forEach(function(e,i){var b=boards[i],de=dxz(b.ex,b.ez);if(de<3.2&&p.z>b.z&&p.z<b.z+14)c(de,function(){actEraser(i);});});
   boards.forEach(function(b,i){var db=Math.hypot(Math.max(0,Math.abs(p.x)-4),p.z-b.z)+2;if(db<8&&p.z>b.z&&p.z<b.z+14)c(db,function(){actBoard(i);});});
@@ -577,7 +606,7 @@ function tap(x,y){
   var u=h[0].object.userData;
   if(outs()&&u.kind!=='window'&&u.kind!=='door'){say('先回教室再操作');return;}
   if(u.kind==='window')toggleWin(u.ref);else if(u.kind==='chair')actChair(u.ref);else if(u.kind==='door')actDoor(u.ref);else if(u.kind==='clock')actClock();
-  else if(u.kind==='eraser')actEraser(u.ref);else if(u.kind==='board')actBoard(u.ref);else if(u.kind==='blanket')actBlanket();
+  else if(u.kind==='toilet')actToilet(u.ref);else if(u.kind==='eraser')actEraser(u.ref);else if(u.kind==='board')actBoard(u.ref);else if(u.kind==='blanket')actBlanket();
 }
 var last=null;
 function boardPt(x,y){aim(x,y);var h=ray.intersectObject(boards[curR].m,false);return h.length?{x:h[0].uv.x*BW,y:(1-h[0].uv.y)*BHc}:null;}
@@ -682,6 +711,7 @@ function syncPeers(dt){
     if(o.name!==nm){o.sp.material.map=labelTex(nm);o.sp.material.needsUpdate=true;o.name=nm;}
     var tx=pr.x,tz=pr.z,ty=(typeof pr.y==='number'?pr.y:groundAt(pr.x,pr.z,0))+0.5,sc=1,tf=typeof pr.f==='number'?pr.f:0;
     if(typeof pr.s==='number'&&pr.s>=0&&chairs[pr.s]){tx=chairs[pr.s].x;tz=chairs[pr.s].z;ty=0.78;sc=0.6;tf=Math.PI;}
+    else if(typeof pr.q==='number'&&pr.q>=0&&pr.q<3&&toilets[pr.q]){tx=toilets[pr.q].x;tz=toilets[pr.q].z+0.1;ty=0.7;sc=0.6;tf=0;}
     else if(typeof pr.g==='number'&&pr.g>=0&&pr.g<4){var bq=BSEAT[pr.g];tx=bq.x;tz=bq.z;ty=0.33;sc=0.6;tf=bq.f;}
     if(!o.init){o.g.position.set(tx,ty,tz);o.init=true;}
     var k=Math.min(1,10*dt),gp=o.g.position;
@@ -1053,7 +1083,7 @@ function updTeachers(dt){
   doors.forEach(function(d){
     var o=false;
     for(var i=0;i<teachers.length;i++){var t=teachers[i];if(t.init&&Math.abs(t.px-d.x)<1.3&&Math.abs(t.pz-d.z)<1.2){o=true;break;}}
-    d.tOpen=o;
+    if(!o&&jan&&jan.init&&Math.abs(jan.px-d.x)<1.3&&Math.abs(jan.pz-d.z)<1.2)o=true;d.tOpen=o;
   });
 }
 net.onTinfo(function(m){
@@ -1067,6 +1097,43 @@ net.onTch(function(m){
     var t=teachers[i];if(!t||!u||typeof u.x!=='number'||typeof u.z!=='number')return;
     t.tx=u.x;t.tz=u.z;t.tf=typeof u.f==='number'?u.f:0;t.st=u.s|0;t.say=typeof u.b==='string'?u.b.slice(0,20):'';
   });
+});
+// 清潔工（伺服器控制）與馬桶狀態
+var jan=null;
+function makeJan(){
+  var g=new THREE.Group();scene.add(g);var s=SHAPES[3];
+  var m=new THREE.Mesh(s.g(),mat(0x6b8f71,{roughness:.5}));m.castShadow=true;g.add(m);
+  var f=new THREE.Mesh(new THREE.BoxGeometry(s.fw,0.18,0.05),mat(0x1c1c1c));f.position.set(0,s.fy,s.fz);m.add(f);
+  box(0.74,0.5,0.74,0xf2c230,0,-0.05,0,m);box(0.8,0.1,0.8,0xf2c230,0,0.93,0,m);
+  cylinder(0.03,0.03,1.5,0x8a5a3b,0.55,0.25,0.2,m);box(0.4,0.1,0.25,0xdadada,0.55,-0.5,0.2,m);
+  var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:labelTex('清潔工'),depthTest:false}));sp.scale.set(1.8,0.45,1);sp.position.set(0,1.5,0);sp.renderOrder=5;g.add(sp);
+  var bub=new THREE.Sprite(new THREE.SpriteMaterial({depthTest:false,transparent:true}));bub.scale.set(3.2,0.6,1);bub.position.set(0,2.15,0);bub.renderOrder=6;bub.visible=false;g.add(bub);
+  return {g:g,m:m,bub:bub,say:'',bt:'',init:false,st:0};
+}
+function updJan(dt){
+  var t=jan;if(!t||typeof t.tx!=='number')return;
+  if(!t.init){t.px=t.tx;t.pz=t.tz;t.pf=t.tf;t.init=true;}
+  var k=Math.min(1,8*dt);t.px+=(t.tx-t.px)*k;t.pz+=(t.tz-t.pz)*k;
+  t.pf+=Math.atan2(Math.sin(t.tf-t.pf),Math.cos(t.tf-t.pf))*Math.min(1,10*dt);
+  t.g.position.set(t.px,0.5+(t.st===1?Math.abs(Math.sin(performance.now()/1000*12))*0.1:0),t.pz);t.m.rotation.y=t.pf;
+  if(t.bt!==t.say){t.bt=t.say;if(t.bub.material.map)t.bub.material.map.dispose();if(t.say){t.bub.material.map=bubTex(t.say);t.bub.material.needsUpdate=true;}t.bub.visible=!!t.say;}
+}
+net.onJan(function(m){
+  if(!jan)jan=makeJan();
+  jan.tx=m.x;jan.tz=m.z;jan.tf=typeof m.f==='number'?m.f:0;jan.st=m.s|0;jan.say=typeof m.b==='string'?m.b.slice(0,24):'';
+});
+net.onToi(function(m){
+  if(m.err){say(m.err);return;}
+  TS=m.s||TS;toilets.forEach(function(t,i){t.poop.visible=!!(TS[i]&&TS[i].p);});
+  var me=net.id();
+  TS.forEach(function(q,i){if(q.o&&q.o===me&&tseat<0&&performance.now()-tUp>800)sitT(i);});
+  if(tseat>=0&&(!TS[tseat]||TS[tseat].o!==me))standT();
+  updPbox();
+});
+net.onFlush(function(m){
+  var t=toilets[m.i];if(!t)return;var d=dxz(t.x,t.z);
+  if(d<14)beep([420,360,300,240,200],0.13,'sawtooth');
+  if(d<3)say('嘩啦～沖水了');
 });
 // 黑板題目：伺服器只傳題目文字，每個人的畫面自己把字寫在黑板上
 function wrapLines(x,t,maxW){
@@ -1139,7 +1206,7 @@ function tick(){
   var dt=Math.min(clk.getDelta(),0.05);
   var ck=Math.floor(srvNow()/250);if(ck!==lastSec){lastSec=ck;drawClock(gameDate());updHud();}
   if(rollSt!=='off'&&!net.online())setRoll('off');
-  updTeachers(dt);updCat();
+  updTeachers(dt);updJan(dt);updCat();
   doors.forEach(function(d){d.piv.rotation.y+=(((d.open||d.tOpen)?-Math.PI/2:0)-d.piv.rotation.y)*Math.min(1,6*dt);});
   wins.forEach(function(w){w.piv.rotation.y+=((w.open?Math.PI/2:0)-w.piv.rotation.y)*Math.min(1,6*dt);});
   updWbox();
@@ -1148,7 +1215,7 @@ function tick(){
     if(keys.ArrowUp)pitch=Math.min(1.4,pitch+1.2*dt);if(keys.ArrowDown)pitch=Math.max(0.05,pitch-1.2*dt);
     var f=(keys.KeyW?1:0)-(keys.KeyS?1:0)-joy.y,r=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x,m=Math.hypot(f,r);
     if(m>1){f/=m;r/=m;m=1;}
-    if(seat||bseat>=0){if(m>0.5){if(seat)stand();else leaveTable();}}
+    if(seat||bseat>=0||tseat>=0){if(m>0.5){if(seat)stand();else if(bseat>=0)leaveTable();else{standT();net.toi({a:'up'});}}}
     else if(vault){
       vault.t+=dt/0.7;var vu=Math.min(1,vault.t),ve=vu*vu*(3-2*vu);
       p.x=vault.x0+(vault.x1-vault.x0)*ve;p.z=vault.z0+(vault.z1-vault.z0)*ve;p.y=0.5+1.05*Math.sin(Math.PI*vu);
@@ -1182,7 +1249,8 @@ function tick(){
     camera.up.set(portrait?-1:0,portrait?0:1,0);
     bcam.set(0,BY,BZ+d);camera.position.lerp(bcam,Math.min(1,10*dt));camera.lookAt(bt);
   }
-  sun.position.set(p.x+4,10,p.z+5);sun.target.position.set(p.x,0,p.z);sun.target.updateMatrixWorld();
+  var sl=Math.hypot(4,10,5),sfx=-4/sl,sfy=-10/sl,sfz=-5/sl,srl=Math.hypot(sfz,sfx),srx=-sfz/srl,srz=sfx/srl,sux=-srz*sfy,suy=srz*sfx-srx*sfz,suz=srx*sfy,sts=28/1024,sa=p.x*srx+p.z*srz,sb=p.x*sux+p.z*suz,sda=Math.round(sa/sts)*sts-sa,sdb=Math.round(sb/sts)*sts-sb,stx=p.x+sda*srx+sdb*sux,sty=sdb*suy,stz=p.z+sda*srz+sdb*suz;
+  sun.position.set(stx+4,sty+10,stz+5);sun.target.position.set(stx,sty,stz);sun.target.updateMatrixWorld();
   syncPeers(dt);
   renderer.render(scene,camera);
   requestAnimationFrame(tick);
