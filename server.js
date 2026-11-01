@@ -1,6 +1,6 @@
 'use strict';
 // 教室 — HTTP + WebSocket 伺服器
-// 功能：窗戶狀態同步、位置同步（含高度）、黑板保存、暱稱（長度與重複檢查）、大老二（發牌與規則全在伺服器）
+// 功能：三間教室各自的黑板、窗戶狀態同步、位置同步（含高度）、黑板保存、暱稱（長度與重複檢查）、大老二（發牌與規則全在伺服器）
 var http = require('http');
 var fs = require('fs');
 var path = require('path');
@@ -32,8 +32,10 @@ var server = http.createServer(function (req, res) {
 
 var wss = new WebSocketServer({ server: server, path: '/ws', maxPayload: 400 * 1024 });
 var clients = new Set();
-var W = [0, 0, 0]; // 三扇窗戶的開關（記憶體，重啟後全部關閉）
-var board = null; // 黑板最新快照（記憶體，重啟後會清空）
+var NWIN = 10; // 窗戶總數：辦公室 1 + 三間教室各 3
+var W = []; while (W.length < NWIN) W.push(0); // 窗戶開關（記憶體，重啟後全部關閉）
+var boards = [null, null, null]; // 三間教室各自的黑板快照（記憶體，重啟後清空）
+function roomIdx(v) { v = Number(v); return v === 1 || v === 2 ? v : 0; } // 黑板最新快照（記憶體，重啟後會清空）
 
 function sendTo(ws, o) { if (ws.readyState === 1) ws.send(JSON.stringify(o)); }
 function others(ws, o) {
@@ -76,7 +78,7 @@ function num(v, a, b, d) { v = Number(v); return isFinite(v) ? Math.max(a, Math.
 function cleanPresence(p) {
   if (!p || typeof p !== 'object' || typeof p.x !== 'number' || typeof p.z !== 'number') return null;
   return {
-    x: num(p.x, -40, 40, 0), y: num(p.y, -5, 30, 0), z: num(p.z, -40, 40, 0), f: num(p.f, -10, 10, 0),
+    x: num(p.x, -70, 70, 0), y: num(p.y, -5, 30, 0), z: num(p.z, -70, 70, 0), f: num(p.f, -10, 10, 0),
     s: Math.floor(num(p.s, -1, 200, -1)), h: Math.floor(num(p.h, 0, 3, 0)),
     c: (typeof p.c === 'string' && /^#[0-9a-f]{6}$/i.test(p.c)) ? p.c : '#e8553d'
   };
@@ -363,7 +365,7 @@ wss.on('connection', function (ws) {
 
   var peers = [];
   clients.forEach(function (c) { if (c !== ws && c.nick && c.presence) peers.push({ peer: c.id, presence: pubPresence(c) }); });
-  sendTo(ws, { t: 'hello', id: ws.id, peers: peers, board: board });
+  sendTo(ws, { t: 'hello', id: ws.id, peers: peers, boards: boards });
   sendTo(ws, btMsgFor(ws));
   sendTo(ws, { t: 'win', w: W });
 
@@ -385,11 +387,11 @@ wss.on('connection', function (ws) {
     else if (m.t === 'emit') {
       if (m.topic !== 'board') return;
       var d = validStrokes(m.data);
-      if (d) others(ws, { t: 'emit', topic: 'board', data: d, peer: ws.id });
+      if (d) { d.r = roomIdx(m.data.r); others(ws, { t: 'emit', topic: 'board', data: d, peer: ws.id }); }
     }
     else if (m.t === 'win') {
       var wi = Number(m.i);
-      if (wi === 0 || wi === 1 || wi === 2) {
+      if (wi === Math.floor(wi) && wi >= 0 && wi < NWIN) {
         W[wi] = m.o ? 1 : 0;
         var ws2 = JSON.stringify({ t: 'win', w: W });
         clients.forEach(function (c) { if (c.readyState === 1) c.send(ws2); });
@@ -398,8 +400,9 @@ wss.on('connection', function (ws) {
     else if (m.t === 'setboard') {
       var doc = m.doc;
       if (!doc || typeof doc.img !== 'string' || doc.img.indexOf('data:image/jpeg;base64,') !== 0 || doc.img.length > 300000) return;
-      board = { img: doc.img, by: String(doc.by || '').slice(0, 16), at: Date.now() };
-      others(ws, { t: 'board', doc: board });
+      var br = roomIdx(doc.r);
+      boards[br] = { img: doc.img, by: String(doc.by || '').slice(0, 16), at: Date.now() };
+      others(ws, { t: 'board', doc: boards[br], r: br });
     }
   });
 
