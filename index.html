@@ -93,6 +93,20 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #cls{right:12px;top:calc(env(safe-area-inset-top,0px) + 104px);display:none;font-size:13px;padding:5px 10px;pointer-events:none;white-space:nowrap}
 .bmode #cls{display:none!important}
 #att{left:50%;top:calc(env(safe-area-inset-top,0px) + 104px);transform:translateX(-50%);display:none;z-index:30;text-align:center;white-space:pre-line;max-width:calc(100vw - 24px);box-sizing:border-box;line-height:1.6;pointer-events:none}
+/* 校園 UI：柔和的紙張色、細邊框與一致的按鈕觸感 */
+:root{--panel:rgba(250,248,241,.93);--btn:rgba(250,248,241,.72);--fg:#273746}
+:root[data-theme="dark"]{--panel:rgba(28,37,46,.94);--btn:rgba(28,37,46,.78);--fg:#e7edf2}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--panel:rgba(28,37,46,.94);--btn:rgba(28,37,46,.78);--fg:#e7edf2}}
+.box{border:1px solid rgba(76,91,101,.16);border-radius:14px;box-shadow:0 6px 20px rgba(36,49,58,.14);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.box button,.pbtn{transition:transform .16s ease,box-shadow .16s ease,background-color .16s ease}
+.box button:hover,.pbtn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(30,45,55,.15)}
+.box button:active,.pbtn:active{transform:translateY(1px) scale(.98)}
+#hint{line-height:1.85;font-size:13px;padding:10px 15px}
+#who{font-weight:700;letter-spacing:.02em}
+#toast{font-weight:600;box-shadow:0 8px 24px rgba(36,49,58,.2)}
+#cpanel,#tbl{box-shadow:0 12px 32px rgba(36,49,58,.2)}
+#cbtn{font-weight:700}
+@media(max-width:600px){#hint{font-size:12px}.box{border-radius:12px}#who{font-size:13px}}
 </style>
 </head>
 <body>
@@ -371,6 +385,24 @@ oval(0,9,0x86c463,0.0);oval(9,12,0xc4553d,0.01);oval(10.45,10.55,0xffffff,0.02);
 var osol=[];
 function tree(x,z){box(0.4,2,0.4,0x7b5a3a,x,1,z);var t=new THREE.Mesh(new THREE.SphereGeometry(1.5,12,10),mat(0x3f8f45));t.position.set(x,3.2,z);t.castShadow=true;scene.add(t);osol.push([x,z,0.9]);}
 [[13,-30],[13,30],[-15,-12],[-15,14],[-24,0],[30,-34],[30,34],[-30,-30],[-30,30],[11,18]].forEach(function(q){tree(q[0],q[1]);});
+// 校園小景：跑道旁的長椅、花圃與巡守貓，純裝飾不佔用互動/碰撞位置
+function cylinder(rt,rb,h,c,x,y,z,par){var m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,12),mat(c));m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;(par||scene).add(m);return m;}
+function bench(x,z,ry){var g=new THREE.Group();g.position.set(x,0,z);g.rotation.y=ry||0;scene.add(g);
+  box(1.45,.1,.46,0xb47a4d,0,.52,0,g);box(1.45,.1,.12,0x9a603b,0,.9,-.16,g);
+  [-.55,.55].forEach(function(a){box(.1,.48,.1,0x56636a,a,.25,0,g);box(.1,.52,.1,0x56636a,a,.66,-.16,g);});
+}
+function flowerbed(x,z){box(1.55,.22,.78,0x9b7654,x,.11,z);box(1.4,.09,.63,0x574839,x,.25,z);
+  [-.48,-.16,.18,.48].forEach(function(dx,i){var stem=cylinder(.035,.045,.42,0x4b8b55,x+dx,.49,z+(i%2?.1:-.1));var bloom=new THREE.Mesh(new THREE.SphereGeometry(.13,8,6),mat([0xe98b78,0xf2c66d,0xb88fca,0xe98b78][i]));bloom.position.set(x+dx,.74,z+(i%2?.1:-.1));scene.add(bloom);});
+}
+bench(15,4,.1);bench(15,16,.1);flowerbed(18,4);flowerbed(18,16);
+// 校園巡守貓「橘子」：小型靜態吉祥物，放在操場邊不影響移動
+var cat=new THREE.Group();cat.position.set(20,.02,-1.8);scene.add(cat);
+function catBall(r,c,x,y,z){var m=new THREE.Mesh(new THREE.SphereGeometry(r,14,10),mat(c,{roughness:.82}));m.position.set(x,y,z);m.castShadow=true;cat.add(m);return m;}
+catBall(.34,0xe58a45,0,.38,0).scale.set(1.25,.8,.8);catBall(.24,0xf0a454,0,.67,-.02);
+[-1,1].forEach(function(s){var ear=new THREE.Mesh(new THREE.ConeGeometry(.12,.28,4),mat(0xe58a45));ear.position.set(s*.16,.9,-.02);ear.rotation.z=s*-.25;cat.add(ear);catBall(.035,0x29323a,s*.09,.69,.19);});
+var tail=new THREE.Mesh(new THREE.TorusGeometry(.2,.055,8,18,Math.PI*1.5),mat(0xd47736));tail.position.set(-.38,.5,.02);tail.rotation.y=Math.PI/2;cat.add(tail);
+var catTag=new THREE.Sprite(new THREE.SpriteMaterial({map:labelTex('巡守貓・橘子'),depthTest:false}));catTag.scale.set(1.8,.45,1);catTag.position.set(0,1.25,0);cat.add(catTag);
+// 花圃與長椅均在戶外通道邊，保留操場中央的跑動空間
 box(0.2,7,0.2,0xcfd3d6,11,3.5,-9);box(1.4,0.9,0.04,0xd9382b,11.7,6.4,-9);osol.push([11,-9,0.7]);
 function oblk(x,z){
   for(var i=0;i<osol.length;i++){if(Math.hypot(x-osol[i][0],z-osol[i][1])<osol[i][2])return true;}
