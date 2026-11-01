@@ -76,6 +76,12 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #res .row.win{font-weight:700}
 #res .acts{margin-top:14px}
 .gmode #joy,.gmode #btns,.gmode #hint,.gmode #cbtn,.gmode #cpanel,.gmode #held{display:none!important}
+#wbox{left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translateX(-50%);display:none;gap:8px;padding:6px;z-index:15}
+#wbox.on{display:flex}
+#wbox button{min-height:44px;margin:0;padding:0 14px;font-size:15px}
+.touch #wbox{bottom:calc(env(safe-area-inset-bottom,0px) + 180px)}
+#btns #bj{margin-bottom:12px}
+.bmode #wbox,.gmode #wbox{display:none!important}
 @media (max-width:480px){.pbtn{padding:0 10px;font-size:15px}#gp .mid{min-height:76px}}
 </style>
 </head>
@@ -87,9 +93,10 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 <div id="who" class="box" title="點一下可以改暱稱" style="right:12px;top:calc(env(safe-area-inset-top,0px) + 12px)"></div>
 <button id="cbtn" class="box">造型</button>
 <div id="cpanel" class="box"><div class="ttl">形狀</div><div class="row" id="shrow"></div><div class="ttl">顏色</div><div class="row" id="cwrow"></div></div>
-<div id="hint" class="box">W A S D　移動　拖曳或方向鍵　轉動視角<br>E　互動　也可以直接點擊椅子、門、黑板、板擦、時鐘、毯子（大老二）</div>
+<div id="hint" class="box">W A S D　移動　拖曳或方向鍵　轉動視角<br>E　互動　也可以直接點擊椅子、門、窗戶、黑板、板擦、時鐘、毯子（大老二）<br>空白鍵　跳躍　R　回到教室起點</div>
 <div id="joy"><div id="knob"></div></div>
-<div id="btns"><button id="bi">互動</button></div>
+<div id="btns"><button id="bj">跳</button><button id="bi">互動</button></div>
+<div id="wbox" class="box"><button id="wtog" class="pbtn" type="button">開窗</button><button id="wgo" class="pbtn main" type="button">翻出窗外</button></div>
 <div id="nickdlg"><div class="dcard"><h2>你的暱稱</h2><p>最多 7 個字，不能和線上的人重複。</p><input id="nickin" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-label="暱稱"><div id="nickerr" role="alert"></div><div class="acts"><button id="nickok" class="pbtn main">進入教室</button><button id="nickcancel" class="pbtn" style="display:none">取消</button></div></div></div>
 <div id="tbl"></div>
 <div id="gp"></div>
@@ -98,7 +105,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 <script>
 // 自己的連線層：用 WebSocket 取代 claude.ai 的 room 和 db
 (function(){
-var ws=null,myId=null,connected=false,myPresence={},peerMap={},cache=null,handlers=[],boardCbs=[],lastBoard=null,nick=null,tryNick=null,nickFn=null,btFn=null,lastBt=null;
+var ws=null,myId=null,connected=false,myPresence={},peerMap={},cache=null,handlers=[],boardCbs=[],lastBoard=null,nick=null,tryNick=null,nickFn=null,btFn=null,lastBt=null,winFn=null,lastWin=null;
 function rebuild(){
   var a=[];
   Object.keys(peerMap).forEach(function(k){a.push({peer:k,isMe:false,sameTab:false,kind:'viewer',guest:false,by:null,presence:peerMap[k]});});
@@ -125,7 +132,8 @@ function connect(){
       handlers.forEach(function(h){if(h.topic===m.topic)h.fn({topic:m.topic,data:m.data,peer:m.peer,isMe:false,sameTab:false,kind:'viewer'});});
     }else if(m.t==='board'){lastBoard=m.doc;boardCbs.forEach(function(f){f(snap(m.doc));});
     }else if(m.t==='nick'){nick=m.ok?m.n:(m.n||null);tryNick=null;if(nickFn)nickFn(m);
-    }else if(m.t==='bt'){lastBt=m;if(btFn)btFn(m);}
+    }else if(m.t==='bt'){lastBt=m;if(btFn)btFn(m);
+    }else if(m.t==='win'){lastWin=m.w;if(winFn)winFn(m.w);}
     rebuild();
   };
   ws.onclose=function(){connected=false;peerMap={};rebuild();setTimeout(connect,2000);};
@@ -149,6 +157,8 @@ window.net={
   onNick:function(f){nickFn=f;},
   onBt:function(f){btFn=f;if(lastBt)f(lastBt);},
   bt:function(o){o.t='bt';send(o);},
+  onWin:function(f){winFn=f;if(lastWin)f(lastWin);},
+  win:function(i,o){send({t:'win',i:i,o:o?1:0});},
   online:function(){return connected;}
 };
 connect();
@@ -161,7 +171,7 @@ if(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches)document.bod
 var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
 renderer.shadowMap.enabled=true;
-var scene=new THREE.Scene();scene.background=new THREE.Color(0x222222);
+var scene=new THREE.Scene();scene.background=new THREE.Color(0xa6d6f2);
 var camera=new THREE.PerspectiveCamera(60,1,0.1,100);
 var H=4.2,BZ=-7,BY=2.15;
 function mat(c,o){return new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.9},o||{}));}
@@ -171,13 +181,14 @@ function pl(w,h,x,y,z,ry,c,basic){var m=new THREE.Mesh(new THREE.PlaneGeometry(w
 // room shell
 var fl=pl(16,14,0,0,0,0,0xc7b08a);fl.rotation.x=-Math.PI/2;
 var ce=pl(16,14,0,H,0,0,0xf4f4f0);ce.rotation.x=Math.PI/2;
-pl(16,H,0,H/2,-7,0,0xeee8d8);pl(16,H,0,H/2,7,0,0xeee8d8);pl(14,H,8,H/2,0,-Math.PI/2,0xeee8d8);
+pl(16,H,0,H/2,-7,0,0xeee8d8);pl(16,H,0,H/2,7,0,0xeee8d8);function wallE(z0,z1,y0,y1){pl(z1-z0,y1-y0,8,(y0+y1)/2,(z0+z1)/2,-Math.PI/2,0xeee8d8);}
+[[-7,-5.1],[-2.9,-1.1],[1.1,2.9],[5.1,7]].forEach(function(a){wallE(a[0],a[1],0,H);});
+[-4,0,4].forEach(function(z){wallE(z-1.1,z+1.1,0,0.9);wallE(z-1.1,z+1.1,2.7,H);});
 function wallW(z0,z1,y0,y1){pl(z1-z0,y1-y0,-8,(y0+y1)/2,(z0+z1)/2,Math.PI/2,0xeee8d8);}
 wallW(-7,-4.9,0,H);wallW(-3.1,4.1,0,H);wallW(5.9,7,0,H);wallW(-4.9,-3.1,3,H);wallW(4.1,5.9,3,H);
 var cf=pl(2,14,-9,0.01,0,0,0x9aa0a6);cf.rotation.x=-Math.PI/2;
 var cc2=pl(2,14,-9,H,0,0,0xdadde0);cc2.rotation.x=Math.PI/2;
 pl(14,H,-10,H/2,0,Math.PI/2,0xb9bfc5);pl(2,H,-9,H/2,-7,0,0xb9bfc5);pl(2,H,-9,H/2,7,0,0xb9bfc5);
-[-4,0,4].forEach(function(z){pl(2.2,1.4,7.97,2.3,z,-Math.PI/2,0xbfe3ff,true);box(0.05,0.06,2.3,0xffffff,7.96,1.6,z);});
 [-3.5,3.5].forEach(function(x){[-3,0.5,4].forEach(function(z){var l=pl(0.5,2.6,x,H-0.01,z,0,0xffffff,true);l.rotation.x=Math.PI/2;});});
 
 scene.add(new THREE.HemisphereLight(0xffffff,0xb8a58a,0.95));
@@ -188,7 +199,7 @@ var sc=sun.shadow.camera;sc.left=-10;sc.right=10;sc.top=10;sc.bottom=-10;sc.far=
 var solids=[];
 function solid(x0,x1,z0,z1){solids.push({x0:x0,x1:x1,z0:z0,z1:z1});}
 function blocked(x,z){for(var i=0;i<solids.length;i++){var s=solids[i];if(x>s.x0-.5&&x<s.x1+.5&&z>s.z0-.5&&z<s.z1+.5)return true;}return false;}
-function groundAt(x,z){return z<-4.8?0.25:0;}
+function groundAt(x,z){return (z<-4.8&&z>-7.2&&x>-8.2&&x<8.2)?0.25:0;}
 
 // stage, teacher desk, cabinet, bulletin board
 box(16,0.25,2.2,0x8d6e63,0,0.125,-5.9);
@@ -262,6 +273,30 @@ BSEAT.forEach(function(q){
   m.userData={kind:'door',ref:d};pickables.push(m);doors.push(d);
 });
 
+// windows (east wall, state shared through the server) + playground
+var wins=[];
+[-4,0,4].forEach(function(wz){
+  box(0.34,0.08,2.5,0xffffff,8,0.9,wz);box(0.14,0.08,2.4,0xffffff,8,2.7,wz);
+  box(0.14,1.8,0.1,0xffffff,8,1.8,wz-1.15);box(0.14,1.8,0.1,0xffffff,8,1.8,wz+1.15);
+  var piv=new THREE.Group();piv.position.set(8,0.9,wz-1.1);scene.add(piv);
+  var gm=new THREE.Mesh(new THREE.BoxGeometry(0.03,1.8,2.2),mat(0xbfe3ff,{transparent:true,opacity:0.4,roughness:.2}));
+  gm.position.set(0,0.9,1.1);piv.add(gm);box(0.05,0.05,2.2,0xffffff,0,0.9,1.1,piv);
+  var w={piv:piv,open:false,z:wz};gm.userData={kind:'window',ref:w};pickables.push(gm);wins.push(w);
+});
+box(18.4,0.3,14.4,0xd8d8d2,-1,H+0.15,0);
+var gr=pl(80,80,0,-0.02,0,0,0x6fae4f);gr.rotation.x=-Math.PI/2;
+function oval(r0,r1,col,y){var g=new THREE.Mesh(r0?new THREE.RingGeometry(r0,r1,64):new THREE.CircleGeometry(r1,64),new THREE.MeshStandardMaterial({color:col,roughness:1}));g.rotation.x=-Math.PI/2;g.scale.set(1,2.4,1);g.position.set(24,y,0);g.receiveShadow=true;scene.add(g);}
+oval(0,9,0x86c463,0.0);oval(9,12,0xc4553d,0.01);oval(10.45,10.55,0xffffff,0.02);
+var osol=[];
+function tree(x,z){box(0.4,2,0.4,0x7b5a3a,x,1,z);var t=new THREE.Mesh(new THREE.SphereGeometry(1.5,12,10),mat(0x3f8f45));t.position.set(x,3.2,z);t.castShadow=true;scene.add(t);osol.push([x,z,0.9]);}
+[[13,-30],[13,30],[-15,-12],[-15,14],[-24,0],[30,-34],[30,34],[-30,-30],[-30,30],[11,18]].forEach(function(q){tree(q[0],q[1]);});
+box(0.2,7,0.2,0xcfd3d6,11,3.5,-9);box(1.4,0.9,0.04,0xd9382b,11.7,6.4,-9);osol.push([11,-9,0.7]);
+function oblk(x,z){
+  if(x>-10.7&&x<8.5&&z>-7.7&&z<7.7)return true;
+  for(var i=0;i<osol.length;i++){if(Math.hypot(x-osol[i][0],z-osol[i][1])<osol[i][2])return true;}
+  return false;
+}
+
 // player
 var player=new THREE.Group();scene.add(player);
 var body=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),mat(0xe8553d,{roughness:.5}));body.castShadow=true;player.add(body);
@@ -305,9 +340,9 @@ document.getElementById('cbtn').addEventListener('click',function(){
   var cp=document.getElementById('cpanel');cp.style.display=cp.style.display==='block'?'none':'block';this.blur();
 });
 setLook(look.h,look.c);
-var p=player.position,facing=0,seat=null,held=false,mode='walk',tool='chalk';
+var p=player.position,facing=0,seat=null,held=false,mode='walk',tool='chalk',outside=false,vault=null,air=false,vy=0,jumpReq=false;
 var yaw=0,pitch=0.45,dist=7;
-function reset(){p.set(0,0.5,5.6);player.scale.setScalar(1);seat=null;facing=0;yaw=0;pitch=0.45;dist=7;player.rotation.y=0;}
+function reset(){outside=false;vault=null;air=false;vy=0;p.set(0,0.5,5.6);player.scale.setScalar(1);seat=null;facing=0;yaw=0;pitch=0.45;dist=7;player.rotation.y=0;}
 reset();
 
 // ui helpers
@@ -315,6 +350,30 @@ var toast=document.getElementById('toast'),tt=0,bi=document.getElementById('bi')
 function say(t){toast.textContent=t;toast.style.opacity=1;clearTimeout(tt);tt=setTimeout(function(){toast.style.opacity=0;},2000);}
 function dxz(x,z){return Math.hypot(p.x-x,p.z-z);}
 function setHeld(v){held=v;eraser.visible=!v;heldMesh.visible=v;document.getElementById('held').style.display=v?'block':'none';}
+
+// windows
+var wbox=document.getElementById('wbox'),wt=document.getElementById('wtog'),wg=document.getElementById('wgo'),nw=null;
+function winFree(){return mode==='walk'&&!seat&&bseat<0&&!vault;}
+function toggleWin(w){
+  if(!winFree())return;
+  if(Math.hypot(p.x-8,p.z-w.z)>3.2){say('走近窗戶再操作');return;}
+  w.open=!w.open;say(w.open?'窗戶打開了':'窗戶關上了');net.win(wins.indexOf(w),w.open);
+}
+function actWin(w){
+  if(!winFree())return;
+  if(!w.open){toggleWin(w);return;}
+  if(Math.hypot(p.x-8,p.z-w.z)>3.2){say('走近窗戶再操作');return;}
+  vault={t:0,x0:p.x,z0:p.z,x1:outside?7.0:9.6,z1:w.z,out:!outside};
+}
+function updWbox(){
+  var best=null,bd=2.8;
+  if(winFree())wins.forEach(function(w){var d=Math.hypot(p.x-8,p.z-w.z);if(d<bd){bd=d;best=w;}});
+  nw=best;var on=!!best;if(wbox.classList.contains('on')!==on)wbox.classList.toggle('on',on);
+  if(best){var a=best.open?'關窗':'開窗',b=outside?'翻進教室':'翻出窗外';if(wt.textContent!==a)wt.textContent=a;if(wg.textContent!==b)wg.textContent=b;wg.disabled=!best.open;}
+}
+wt.addEventListener('click',function(){if(nw)toggleWin(nw);});
+wg.addEventListener('click',function(){if(nw)actWin(nw);});
+net.onWin(function(a){if(a)wins.forEach(function(w,i){w.open=!!a[i];});});
 
 // actions
 function sit(c){seat=c;player.scale.setScalar(0.6);p.set(c.x,0.78,c.z);facing=Math.PI;player.rotation.y=facing;yaw=0;bi.textContent='站起來';}
@@ -350,6 +409,8 @@ function interact(){
   if(bseat>=0){leaveTable();return;}
   var best=null,bs=99;
   function c(s,f){if(s<bs){bs=s;best=f;}}
+  wins.forEach(function(w){var d=Math.hypot(p.x-8,p.z-w.z);if(d<3.0)c(d-0.5,function(){actWin(w);});});
+  if(outside){if(best)best();else say('附近沒有可以互動的東西');return;}
   chairs.forEach(function(ch){var d=dxz(ch.x,ch.z);if(d<2.2)c(d,function(){actChair(ch);});});
   doors.forEach(function(dr){var d=dxz(-8,dr.z);if(d<3.2)c(d,function(){actDoor(dr);});});
   if(!held){var de=dxz(ERX,ERZ);if(de<3.2)c(de,actEraser);}
@@ -365,7 +426,8 @@ function tap(x,y){
   if(mode!=='walk')return;
   aim(x,y);var h=ray.intersectObjects(pickables,false);if(!h.length)return;
   var u=h[0].object.userData;
-  if(u.kind==='chair')actChair(u.ref);else if(u.kind==='door')actDoor(u.ref);else if(u.kind==='clock')actClock();
+  if(outside&&u.kind!=='window'){say('先回教室再操作');return;}
+  if(u.kind==='window')toggleWin(u.ref);else if(u.kind==='chair')actChair(u.ref);else if(u.kind==='door')actDoor(u.ref);else if(u.kind==='clock')actClock();
   else if(u.kind==='eraser')actEraser();else if(u.kind==='board')actBoard();else if(u.kind==='blanket')actBlanket();
 }
 var last=null;
@@ -384,6 +446,7 @@ var keys={},joy={x:0,y:0},joyId=null,drag=null;
 window.addEventListener('keydown',function(e){
   if(e.target&&e.target.tagName==='INPUT')return;
   keys[e.code]=true;
+  if(e.code==='Space')e.preventDefault();
   if(e.code==='KeyR'&&mode==='walk'&&bseat<0)reset();
   if(e.code==='KeyE'&&!e.repeat)interact();
   if(e.code==='Escape'&&mode==='board')exitBoard();
@@ -419,6 +482,7 @@ jb.addEventListener('pointermove',function(e){if(e.pointerId===joyId)joyMove(e);
 function joyEnd(e){if(e.pointerId===joyId){joyId=null;joy.x=0;joy.y=0;kn.style.transform='translate(0,0)';}}
 jb.addEventListener('pointerup',joyEnd);jb.addEventListener('pointercancel',joyEnd);
 bi.addEventListener('pointerdown',function(e){e.preventDefault();interact();});
+document.getElementById('bj').addEventListener('pointerdown',function(e){e.preventDefault();jumpReq=true;});
 document.getElementById('drop').addEventListener('click',function(){setHeld(false);say('板擦放回粉筆槽了');});
 document.getElementById('exit').addEventListener('click',exitBoard);
 document.getElementById('swap').addEventListener('click',function(){setTool(tool==='chalk'?'eraser':'chalk');});
@@ -427,6 +491,7 @@ function resize(){var w=window.innerWidth,h=window.innerHeight;renderer.setSize(
 window.addEventListener('resize',resize);resize();
 
 function tryMove(nx,nz){
+  if(outside){nx=clamp(nx,-38,38);nz=clamp(nz,-38,38);if(!oblk(nx,p.z))p.x=nx;if(!oblk(p.x,nz))p.z=nz;return;}
   nx=Math.max(-7.5,Math.min(7.5,nx));nz=Math.max(-6.5,Math.min(6.5,nz));
   var inb=blocked(p.x,p.z);
   if(!blocked(nx,p.z)||inb)p.x=nx;
@@ -449,10 +514,10 @@ function syncPeers(dt){
   var count=0,seen={},me=null,list=room?room.peers():[],idx=seat?chairs.indexOf(seat):-1;
   list.forEach(function(q){if(q.isMe&&q.sameTab)me=q;});
   if(room&&nickOK){
-    var st=Math.round(p.x*50)+'|'+Math.round(p.z*50)+'|'+Math.round(facing*20)+'|'+idx+'|'+look.h+look.c;
+    var st=Math.round(p.x*50)+'|'+Math.round(p.z*50)+'|'+Math.round(facing*20)+'|'+idx+'|'+look.h+look.c+'|'+Math.round(p.y*20);
     if(st!==lastSent&&performance.now()-sentAt>100){
       lastSent=st;sentAt=performance.now();
-      room.presence({n:myName,x:Math.round(p.x*100)/100,z:Math.round(p.z*100)/100,f:Math.round(facing*100)/100,s:idx,h:look.h,c:look.c}).catch(function(){});
+      room.presence({n:myName,x:Math.round(p.x*100)/100,z:Math.round(p.z*100)/100,f:Math.round(facing*100)/100,s:idx,h:look.h,c:look.c,y:Math.round((p.y-0.5)*100)/100}).catch(function(){});
     }
   }
   list.forEach(function(q){
@@ -466,7 +531,7 @@ function syncPeers(dt){
     var oc=(typeof pr.c==='string'&&/^#[0-9a-f]{6}$/i.test(pr.c))?pr.c:'#'+new THREE.Color().setHSL(hue(q.peer)/360,0.65,0.55).getHexString();
     if(o.h!==oh||o.c!==oc){applyLook(o.m,o.f,oh,oc);o.h=oh;o.c=oc;}
     if(o.name!==nm){o.sp.material.map=labelTex(nm);o.sp.material.needsUpdate=true;o.name=nm;}
-    var tx=pr.x,tz=pr.z,ty=groundAt(pr.x,pr.z)+0.5,sc=1,tf=typeof pr.f==='number'?pr.f:0;
+    var tx=pr.x,tz=pr.z,ty=(typeof pr.y==='number'?pr.y:groundAt(pr.x,pr.z))+0.5,sc=1,tf=typeof pr.f==='number'?pr.f:0;
     if(typeof pr.s==='number'&&pr.s>=0&&chairs[pr.s]){tx=chairs[pr.s].x;tz=chairs[pr.s].z;ty=0.78;sc=0.6;tf=Math.PI;}
     else if(typeof pr.g==='number'&&pr.g>=0&&pr.g<4){var bq=BSEAT[pr.g];tx=bq.x;tz=bq.z;ty=0.33;sc=0.6;tf=bq.f;}
     if(!o.init){o.g.position.set(tx,ty,tz);o.init=true;}
@@ -764,12 +829,20 @@ function tick(){
   var dt=Math.min(clk.getDelta(),0.05),now=new Date();
   if(now.getSeconds()!==lastSec){lastSec=now.getSeconds();drawClock(now);}
   doors.forEach(function(d){d.piv.rotation.y+=((d.open?-Math.PI/2:0)-d.piv.rotation.y)*Math.min(1,6*dt);});
+  wins.forEach(function(w){w.piv.rotation.y+=((w.open?Math.PI/2:0)-w.piv.rotation.y)*Math.min(1,6*dt);});
+  updWbox();
   if(mode==='walk'){
     if(keys.ArrowLeft)yaw+=1.8*dt;if(keys.ArrowRight)yaw-=1.8*dt;
     if(keys.ArrowUp)pitch=Math.min(1.4,pitch+1.2*dt);if(keys.ArrowDown)pitch=Math.max(0.05,pitch-1.2*dt);
     var f=(keys.KeyW?1:0)-(keys.KeyS?1:0)-joy.y,r=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x,m=Math.hypot(f,r);
     if(m>1){f/=m;r/=m;m=1;}
     if(seat||bseat>=0){if(m>0.5){if(seat)stand();else leaveTable();}}
+    else if(vault){
+      vault.t+=dt/0.7;var vu=Math.min(1,vault.t),ve=vu*vu*(3-2*vu);
+      p.x=vault.x0+(vault.x1-vault.x0)*ve;p.z=vault.z0+(vault.z1-vault.z0)*ve;p.y=0.5+1.05*Math.sin(Math.PI*vu);
+      facing=vault.out?Math.PI/2:-Math.PI/2;player.rotation.y=facing;
+      if(vu>=1){outside=vault.out;vault=null;p.y=0.5;air=false;vy=0;}
+    }
     else{
       if(m>0.08){
         var dx=-Math.sin(yaw)*f+Math.cos(yaw)*r,dz=-Math.cos(yaw)*f-Math.sin(yaw)*r;
@@ -777,11 +850,19 @@ function tick(){
         var tg=Math.atan2(dx,dz),df=Math.atan2(Math.sin(tg-facing),Math.cos(tg-facing));
         facing+=df*Math.min(1,12*dt);player.rotation.y=facing;
       }
-      var feet=p.y-0.5;feet+=(groundAt(p.x,p.z)-feet)*Math.min(1,14*dt);p.y=feet+0.5;
+      var feet=p.y-0.5,gy=groundAt(p.x,p.z);
+      if((keys.Space||jumpReq)&&!air){vy=6.2;air=true;}
+      jumpReq=false;
+      if(!air&&feet>gy+0.08){air=true;vy=0;}
+      if(air){vy-=18*dt;feet+=vy*dt;if(vy<=0&&feet<=gy){feet=gy;air=false;vy=0;}}
+      else feet+=(gy-feet)*Math.min(1,14*dt);
+      p.y=feet+0.5;
+      if(feet<-4){say('掉出地圖了，回到教室');reset();}
     }
     camera.up.set(0,1,0);
     var cx=p.x+Math.sin(yaw)*Math.cos(pitch)*dist,cy=p.y+Math.sin(pitch)*dist,cz=p.z+Math.cos(yaw)*Math.cos(pitch)*dist;
-    camera.position.set(clamp(cx,-7.7,7.7),clamp(cy,0.4,H-0.3),clamp(cz,-6.8,6.8));
+    if(p.x>8)camera.position.set(clamp(cx,-45,45),clamp(cy,0.4,14),clamp(cz,-45,45));
+    else camera.position.set(clamp(cx,-7.7,7.7),clamp(cy,0.4,H-0.3),clamp(cz,-6.8,6.8));
     camera.lookAt(p.x,p.y,p.z);
   }else{
     var portrait=camera.aspect<1,d=portrait?7.4:Math.min(9,Math.max(2.4,8.5/(camera.aspect*1.1547)));
