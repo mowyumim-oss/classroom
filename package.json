@@ -1,7 +1,7 @@
 {
   "name": "classroom",
-  "version": "1.3.0",
-  "description": "3D multiplayer classroom",
+  "version": "1.4.0",
+  "description": "3D multiplayer classroom (teachers, roll call, board questions)",
   "main": "server.js",
   "scripts": { "start": "node server.js" },
   "dependencies": { "ws": "^8.18.0" },

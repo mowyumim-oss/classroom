@@ -1,6 +1,7 @@
 'use strict';
 // 教室 — HTTP + WebSocket 伺服器
-// 功能：三間教室各自的黑板、窗戶狀態同步、位置同步（含高度）、黑板保存、暱稱（長度與重複檢查）、大老二（發牌與規則全在伺服器）
+// 功能：三間教室各自的黑板、窗戶狀態同步、位置同步（含高度）、黑板保存、暱稱（長度與重複檢查）、大老二（發牌與規則全在伺服器）、
+//       老師 NPC（辦公室走動、依遊戲時間上下課）、點名、黑板題目、上下課鐘
 var http = require('http');
 var fs = require('fs');
 var path = require('path');
@@ -32,7 +33,7 @@ var server = http.createServer(function (req, res) {
 
 var wss = new WebSocketServer({ server: server, path: '/ws', maxPayload: 400 * 1024 });
 var clients = new Set();
-var NWIN = 10; // 窗戶總數：辦公室 1 + 三間教室各 3
+var NWIN = 17; // 窗戶總數：東側 10 扇 + 走廊側 7 扇
 var W = []; while (W.length < NWIN) W.push(0); // 窗戶開關（記憶體，重啟後全部關閉）
 var boards = [null, null, null]; // 三間教室各自的黑板快照（記憶體，重啟後清空）
 function roomIdx(v) { v = Number(v); return v === 1 || v === 2 ? v : 0; } // 黑板最新快照（記憶體，重啟後會清空）
@@ -139,7 +140,7 @@ function beats(a, b) {
   return a.p > b.p;
 }
 
-var T = { ph: 'lobby', seats: [null, null, null, null], turn: -1, last: null, passed: {}, first: false, deadline: 0, res: null, m: '' };
+var T = { ph: 'lobby', seats: [null, null, null, null], turn: -1, last: null, passed: {}, first: false, deadline: 0, res: null, m: '', paused: false, pauseLeft: 0 };
 var turnTimer = null, resetTimer = null;
 
 function activeSeats() {
@@ -162,7 +163,8 @@ function pubState() {
     seats: T.seats.map(function (s) { return s ? { n: s.nick, r: s.ready ? 1 : 0, c: s.hand.length, o: s.out ? 1 : 0 } : { n: null, r: 0, c: 0, o: 0 }; }),
     turn: T.turn,
     last: T.last ? { s: T.last.seat, c: T.last.c, k: T.last.combo.k } : null,
-    tl: T.ph === 'playing' ? Math.max(0, T.deadline - Date.now()) : 0,
+    tl: T.ph === 'playing' ? (T.paused ? T.pauseLeft : Math.max(0, T.deadline - Date.now())) : 0,
+    pz: T.paused ? 1 : 0,
     first: T.first ? 1 : 0,
     res: T.res, m: T.m
   };
@@ -181,6 +183,7 @@ function broadcastBt() {
 
 function restartTimer() {
   clearTimeout(turnTimer);
+  if (T.paused) { T.pauseLeft = TURN_MS; return; } // 點名中：倒數暫停，結束後才開始算
   T.deadline = Date.now() + TURN_MS;
   turnTimer = setTimeout(onTurnTimeout, TURN_MS);
 }
@@ -199,6 +202,7 @@ function advance() {
 }
 function endGame(w) {
   clearTimeout(turnTimer);
+  T.paused = false;
   T.ph = 'ended';
   T.turn = -1;
   T.res = {
@@ -213,6 +217,7 @@ function endGame(w) {
 function resetLobby() {
   clearTimeout(turnTimer);
   clearTimeout(resetTimer);
+  T.paused = false;
   T.seats = T.seats.map(function (s) {
     if (!s || s.out) return null;
     s.ready = false; s.hand = [];
@@ -239,7 +244,27 @@ function startGame() {
   T.turn = 0;
   T.seats.forEach(function (s, i) { if (s.hand.indexOf(0) >= 0) T.turn = i; });
   T.m = '發牌完成，' + T.seats[T.turn].nick + ' 持有梅花 3，先出';
+  T.paused = false;
   restartTimer();
+  if (R[0].st === 'call') pauseBt(); // 發牌時剛好在點名，倒數先暫停
+}
+// 點名時暫停大老二的出牌倒數（牌桌在 101 教室），點名結束後從剩下的時間繼續
+function pauseBt() {
+  if (T.ph !== 'playing' || T.paused) return;
+  T.paused = true;
+  T.pauseLeft = Math.max(1000, T.deadline - Date.now());
+  clearTimeout(turnTimer);
+  broadcastBt();
+}
+function resumeBt() {
+  if (!T.paused) return;
+  T.paused = false;
+  if (T.ph === 'playing') {
+    T.deadline = Date.now() + T.pauseLeft;
+    clearTimeout(turnTimer);
+    turnTimer = setTimeout(onTurnTimeout, T.pauseLeft);
+  }
+  broadcastBt();
 }
 
 function doPlay(i, ids) {
@@ -336,6 +361,245 @@ function onBt(ws, m) {
   broadcastBt();
 }
 
+// ───────── 老師、點名、黑板題目 ─────────
+// 時間完全由現實時鐘算出（8 倍速）：一節課循環 = 現實 7 分 30 秒 = 遊戲 60 分鐘，伺服器重啟也不會亂。
+//   0 秒        上課鐘響，老師已在講台前
+//   2 秒起      點名：只點「此刻在這間教室內」的人，被叫到的人要在自己那幾秒內按「到」
+//   點名結束後  老師寫第 1 題（黑板擦乾淨）
+//   187.5 秒    （遊戲 25 分鐘）擦掉黑板，寫第 2 題
+//   375 秒      （遊戲 50 分鐘）下課鐘響，老師離開；375～450 秒是下課
+var CYCLE = 450000;
+var CLASS_END = 375000;
+var ROLL_AT = 2000;
+var Q2_AT = 187500;
+var WRITE_MS = 4000;
+var TSPEED = 2.4; // 老師走路速度（公尺／秒）
+var RZ = [[-7, 7], [7, 21], [21, 35]]; // 三間教室的 z 範圍（x 都是 -8～8）
+
+var TEACHERS = [
+  { n: '王老師', s: '數學', c: '#5b7db1' }, { n: '林老師', s: '英文', c: '#b06a4c' },
+  { n: '陳老師', s: '自然', c: '#4f9170' }, { n: '黃老師', s: '國文', c: '#8c5fa8' },
+  { n: '張老師', s: '社會', c: '#b38d3a' }
+];
+var BANKS = {};
+try {
+  var QM = require('./questions.js');
+  if (QM && Array.isArray(QM.teachers) && QM.teachers.length >= 3) TEACHERS = QM.teachers;
+  if (QM && QM.banks && typeof QM.banks === 'object') BANKS = QM.banks;
+} catch (e) { console.log('questions.js 讀取失敗，使用內建名單：' + e.message); }
+var NT = TEACHERS.length;
+
+// ── 路線圖：辦公室 → 走廊 → 各教室前門 → 講台前 ──
+var TN = {};
+function addNode(id, x, z) { TN[id] = { x: x, z: z, e: [] }; }
+function link(a, b) { TN[a].e.push(b); TN[b].e.push(a); }
+var OSPOT = ['o1', 'o2', 'o3', 'o4', 'o5', 'o6'];
+addNode('o1', -5.5, -10); addNode('o2', -2, -9.3); addNode('o3', 1.5, -10.5);
+addNode('o4', 5, -9); addNode('o5', -5.5, -8); addNode('o6', 3, -8);
+addNode('ov', -0.25, -11.4); addNode('oc', -0.25, -13.6); // oc：櫃子前，從兩張桌子中間的空隙走進去
+addNode('oi', -6.5, -11); addNode('od', -8, -11); addNode('oo', -9.5, -11);
+var OFFICE = OSPOT.concat(['ov', 'oc', 'oi']);
+OFFICE.forEach(function (a) { OFFICE.forEach(function (b) { if (a !== 'oc' && b !== 'oc' && a < b) link(a, b); }); });
+link('oc', 'ov'); link('oi', 'od'); link('od', 'oo');
+var FD = [-4, 10, 24], ZN = [-7, 7, 21]; // 各教室前門的 z、黑板牆的 z
+for (var ri = 0; ri < 3; ri++) {
+  addNode('ro' + ri, -9.5, FD[ri]); addNode('rd' + ri, -8, FD[ri]); addNode('ri' + ri, -6.5, FD[ri]);
+  addNode('rb' + ri, -2.5, ZN[ri] + 1.2);
+  link('ro' + ri, 'rd' + ri); link('rd' + ri, 'ri' + ri); link('ri' + ri, 'rb' + ri);
+  if (ri > 0) link('ro' + (ri - 1), 'ro' + ri);
+}
+link('oo', 'ro0');
+
+function ndist(a, b) { return Math.hypot(TN[a].x - TN[b].x, TN[a].z - TN[b].z); }
+function plan(from, to) { // 最短路線，回傳「從 from 之後」要經過的節點
+  var d = {}, prev = {}, done = {}, ids = Object.keys(TN), u;
+  ids.forEach(function (k) { d[k] = Infinity; });
+  d[from] = 0;
+  for (;;) {
+    u = null;
+    ids.forEach(function (k) { if (!done[k] && d[k] < Infinity && (u === null || d[k] < d[u])) u = k; });
+    if (u === null || u === to) break;
+    done[u] = 1;
+    TN[u].e.forEach(function (v) { var nd = d[u] + ndist(u, v); if (nd < d[v]) { d[v] = nd; prev[v] = u; } });
+  }
+  if (d[to] === Infinity) return [];
+  var path = [], c = to;
+  while (c !== from) { path.unshift(c); c = prev[c]; }
+  return path;
+}
+function plen(from, to) { var L = 0, c = from; plan(from, to).forEach(function (n) { L += ndist(c, n); c = n; }); return L; }
+// 要提前多久從辦公室出發，才能在上課鐘響時站在講台前
+var LEAD = [0, 1, 2].map(function (i) {
+  var m = 0; OSPOT.concat(['oc']).forEach(function (s) { m = Math.max(m, plen(s, 'rb' + i)); });
+  return Math.ceil(m / TSPEED * 1000) + 6000;
+});
+
+var TCH = TEACHERS.map(function (d, i) {
+  return { id: i, name: String(d.n), subj: String(d.s), color: /^#[0-9a-f]{6}$/i.test(d.c) ? d.c : '#888888',
+    x: 0, z: 0, f: 0, at: 'oi', path: [], gw: null, wait: 0, st: 0, say: '', sayUntil: 0, writing: false, lastQ: -1 };
+});
+var lastArr = [];
+
+// 第 n 節課，教室 i 由哪位老師上：(3n+i) mod 人數。5 位老師輪流，每節 3 位上課、2 位在辦公室
+function dutyRoom(tid, n) { for (var i = 0; i < 3; i++) if ((3 * n + i) % NT === tid) return i; return -1; }
+function wantGoal(t, now) {
+  var n = Math.floor(now / CYCLE), ph = now % CYCLE, cur = dutyRoom(t.id, n), nxt = dutyRoom(t.id, n + 1);
+  if (cur >= 0 && ph < CLASS_END) return 'rb' + cur;
+  if (nxt >= 0 && ph >= CYCLE - LEAD[nxt]) return 'rb' + nxt;
+  return 'office';
+}
+function placeTeachers(now) {
+  TCH.forEach(function (t) {
+    var g = wantGoal(t, now), id = g === 'office' ? OSPOT[Math.floor(Math.random() * OSPOT.length)] : g;
+    t.gw = g; t.at = id; t.x = TN[id].x; t.z = TN[id].z; t.path = [];
+    t.wait = 1000 + Math.random() * 4000;
+    t.f = g === 'office' ? Math.random() * 6.28 - 3.14 : 0;
+  });
+}
+function tSay(t, text, ms) { t.say = text; t.sayUntil = Date.now() + ms; }
+
+function stepTeacher(t, dt, now) {
+  var g = wantGoal(t, now);
+  if (g !== t.gw) {
+    t.gw = g;
+    var head = t.path.length ? t.path[t.path.length - 1] : t.at;
+    var dest = g === 'office' ? (OFFICE.indexOf(head) >= 0 ? null : 'oi') : g;
+    if (dest) {
+      var from = t.path.length ? t.path[0] : t.at;
+      t.path = (t.path.length ? [from] : []).concat(plan(from, dest));
+    }
+  }
+  if (!t.path.length && g === 'office' && OFFICE.indexOf(t.at) >= 0) { // 沒事：在辦公室隨意走動
+    t.wait -= dt;
+    if (t.wait <= 0) {
+      var c = OSPOT.concat(['oc']).filter(function (x) { return x !== t.at; });
+      t.path = plan(t.at, c[Math.floor(Math.random() * c.length)]);
+      t.wait = 2500 + Math.random() * 6000;
+    }
+  }
+  if (t.path.length) {
+    var tg = TN[t.path[0]], dx = tg.x - t.x, dz = tg.z - t.z, d = Math.hypot(dx, dz), step = TSPEED * dt / 1000;
+    if (d <= step) { t.x = tg.x; t.z = tg.z; t.at = t.path.shift(); }
+    else { t.x += dx / d * step; t.z += dz / d * step; t.f = Math.atan2(dx, dz); }
+    t.st = 1;
+  } else {
+    t.st = t.writing ? 2 : 0;
+    if (t.at === 'oc') t.f = Math.PI;
+    else if (/^rb/.test(t.at)) t.f = t.writing ? Math.PI : 0; // 寫黑板面向黑板，其餘時間面向學生
+  }
+}
+
+// ── 每間教室的課堂進度：點名與出題 ──
+var R = [0, 1, 2].map(function (i) { return { i: i, n: -1, st: 'wait', list: [], names: [], k: 0, slot: 0, callStart: 0, rollEnd: 0, j: -1, base: 0, q1: false, q2: false, endSaid: false }; });
+var CURQ = [null, null, null], QSEQ = 0;
+
+function inRoom(p, i) { return p.x >= -8 && p.x <= 8 && p.z >= RZ[i][0] && p.z <= RZ[i][1]; }
+function sendAll(o) {
+  var s = JSON.stringify(o);
+  clients.forEach(function (c) { if (c.readyState === 1) c.send(s); });
+}
+function startRoll(r, T0, base) {
+  var list = [];
+  clients.forEach(function (c) { if (c.readyState === 1 && c.nick && c.presence && inRoom(c.presence, r.i)) list.push(c); });
+  r.list = list; r.k = list.length; r.names = list.map(function (c) { return c.nick; }); r.base = base; r.j = -1;
+  if (!r.k) { r.st = 'done'; r.rollEnd = ROLL_AT + 1000; return; }
+  r.slot = Math.max(2500, Math.min(4000, 28000 / r.k)); // 每人 2.5～4 秒，人多時縮短（整段約 30 秒）
+  r.callStart = ROLL_AT + 1500;
+  r.rollEnd = r.callStart + r.k * r.slot + 800;
+  r.st = 'call';
+  tSay(T0, '現在開始點名', 1500);
+  list.forEach(function (c, idx) { c.rr = r.i; c.hit = false; c.slotAt = 0; c.slotMs = 0; sendTo(c, { t: 'roll', a: 'start', r: r.i, k: r.k, i: idx + 1 }); });
+  if (r.i === 0) pauseBt();
+}
+function callOne(r, T0, j) {
+  var c = r.list[j];
+  tSay(T0, r.names[j] + ' 同學', r.slot);
+  if (c && c.readyState === 1 && c.rr === r.i) {
+    c.slotAt = r.base + r.callStart + j * r.slot; c.slotMs = r.slot;
+    sendTo(c, { t: 'roll', a: 'call', ms: r.slot });
+  }
+}
+function endRoll(r, T0) {
+  var pres = [];
+  r.list.forEach(function (c, j) { if (c.hit) pres.push(r.names[j]); });
+  r.list.forEach(function (c) {
+    if (c.readyState === 1 && c.rr === r.i) sendTo(c, { t: 'roll', a: 'end', p: pres, k: r.k, me: c.hit ? 1 : 0 });
+    if (c.rr === r.i) { c.rr = -1; c.hit = false; c.slotAt = 0; }
+  });
+  r.st = 'done';
+  tSay(T0, '出席 ' + pres.length + ' 人', 3000);
+  if (r.i === 0) resumeBt();
+}
+// 只有「被叫到的那幾秒」按才算（前 0.15 秒、後 0.7 秒是網路延遲的緩衝）
+function onHere(ws) {
+  var r = ws.rr >= 0 ? R[ws.rr] : null, now = Date.now();
+  if (!r || r.st !== 'call' || ws.hit) return;
+  if (!ws.slotAt || now < ws.slotAt - 150) { sendTo(ws, { t: 'roll', a: 'early' }); return; }
+  if (now > ws.slotAt + ws.slotMs + 700) { sendTo(ws, { t: 'roll', a: 'late' }); return; }
+  ws.hit = true;
+  sendTo(ws, { t: 'roll', a: 'ok' });
+}
+function issueQ(r, tid, k) {
+  var T0 = TCH[tid], bank = Array.isArray(BANKS[T0.subj]) ? BANKS[T0.subj] : [], idx = -1;
+  if (bank.length) {
+    idx = Math.floor(Math.random() * bank.length);
+    if (bank.length > 1 && idx === T0.lastQ) idx = (idx + 1) % bank.length;
+    T0.lastQ = idx;
+  }
+  var q = { id: ++QSEQ, r: r.i, k: k, subj: T0.subj, teacher: T0.name, p: (r.n % 9) + 1,
+    text: idx >= 0 ? String(bank[idx]).slice(0, 120) : '（這一科的題庫是空的）' };
+  CURQ[r.i] = q;
+  boards[r.i] = null; // 換題：舊的黑板快照作廢，大家的畫面各自擦乾淨再寫上新題
+  sendAll({ t: 'q', q: q });
+}
+function roomTick(r, n, ph) {
+  var tid = (3 * n + r.i) % NT, T0 = TCH[tid];
+  if (r.n !== n) {
+    r.n = n; r.q1 = false; r.q2 = false; r.endSaid = false; r.list = []; r.k = 0; r.j = -1;
+    if (ph < ROLL_AT + 6000) r.st = 'wait';
+    else { r.st = 'done'; r.rollEnd = -WRITE_MS; r.endSaid = ph >= CLASS_END; } // 伺服器在課堂中途才啟動：跳過點名，直接出題
+  }
+  if (r.st === 'wait' && ph >= ROLL_AT) startRoll(r, T0, n * CYCLE);
+  if (r.st === 'call') {
+    var j = Math.floor((ph - r.callStart) / r.slot);
+    if (ph >= r.callStart && j !== r.j && j < r.k) { r.j = j; callOne(r, T0, j); }
+    if (ph >= r.rollEnd) endRoll(r, T0);
+  }
+  if (r.st === 'done' && ph < CLASS_END) {
+    if (!r.q2 && ph >= Q2_AT) {
+      if (ph >= Q2_AT + WRITE_MS) { issueQ(r, tid, 2); r.q1 = true; r.q2 = true; tSay(T0, '換下一題', 2500); }
+      else T0.writing = true;
+    } else if (!r.q1 && ph >= r.rollEnd) {
+      if (ph >= r.rollEnd + WRITE_MS) { issueQ(r, tid, 1); r.q1 = true; tSay(T0, '大家來解這題', 2500); }
+      else T0.writing = true;
+    }
+  }
+  if (ph >= CLASS_END && !r.endSaid) {
+    r.endSaid = true;
+    if (r.st === 'call') endRoll(r, T0);
+    tSay(T0, '下課', 3000);
+  }
+}
+
+var lastTick = Date.now(), tickNo = 0, lastTj = '', lastTjAt = 0, bellS = -1, bellE = -1;
+bellS = Math.floor(lastTick / CYCLE); bellE = (lastTick % CYCLE) >= CLASS_END ? bellS : bellS - 1;
+function simTick() {
+  var now = Date.now(), dt = Math.min(500, now - lastTick), n = Math.floor(now / CYCLE), ph = now % CYCLE;
+  lastTick = now; tickNo++;
+  TCH.forEach(function (t) { t.writing = false; });
+  R.forEach(function (r) { roomTick(r, n, ph); });
+  TCH.forEach(function (t) { stepTeacher(t, dt, now); });
+  if (bellS !== n) { bellS = n; sendAll({ t: 'bell', k: 'start', n: n }); }
+  if (ph >= CLASS_END && bellE !== n) { bellE = n; sendAll({ t: 'bell', k: 'end', n: n }); }
+  if (tickNo % 2) return; // 位置每 0.2 秒廣播一次，沒變化就不送（每 2 秒補送一次校時）
+  lastArr = TCH.map(function (t) {
+    var b = now < t.sayUntil ? t.say : (t.writing && !t.path.length ? '寫黑板中…' : '');
+    return { x: Math.round(t.x * 100) / 100, z: Math.round(t.z * 100) / 100, f: Math.round(t.f * 100) / 100, s: t.st, b: b };
+  });
+  var js = JSON.stringify(lastArr);
+  if (js !== lastTj || now - lastTjAt > 2000) { lastTj = js; lastTjAt = now; sendAll({ t: 'tch', now: now, ts: lastArr }); }
+}
+
 // ───────── 連線 ─────────
 function allow(ws) {
   var now = Date.now();
@@ -358,7 +622,7 @@ function validStrokes(d) {
 wss.on('connection', function (ws) {
   if (clients.size >= MAX_CLIENTS) { ws.close(1013, 'full'); return; }
   ws.id = crypto.randomBytes(4).toString('hex');
-  ws.nick = null; ws.presence = null; ws.seat = -1; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
+  ws.nick = null; ws.presence = null; ws.seat = -1; ws.rr = -1; ws.hit = false; ws.slotAt = 0; ws.slotMs = 0; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
   clients.add(ws);
   ws.on('pong', function () { ws.alive = true; });
   ws.on('error', function () {});
@@ -368,6 +632,9 @@ wss.on('connection', function (ws) {
   sendTo(ws, { t: 'hello', id: ws.id, peers: peers, boards: boards });
   sendTo(ws, btMsgFor(ws));
   sendTo(ws, { t: 'win', w: W });
+  sendTo(ws, { t: 'tinfo', ts: TCH.map(function (t) { return { n: t.name, s: t.subj, c: t.color }; }) });
+  sendTo(ws, { t: 'tch', now: Date.now(), ts: lastArr });
+  sendTo(ws, { t: 'qs', qs: CURQ });
 
   ws.on('message', function (data) {
     ws.alive = true;
@@ -383,6 +650,7 @@ wss.on('connection', function (ws) {
       presenceOut(ws);
     }
     else if (m.t === 'bt') onBt(ws, m); // 沒有暱稱的人會在 joinTable 被擋下
+    else if (m.t === 'here') onHere(ws); // 點名：按「到」
     else if (!ws.nick) return; // 沒有暱稱的人不能寫黑板
     else if (m.t === 'emit') {
       if (m.topic !== 'board') return;
@@ -401,7 +669,8 @@ wss.on('connection', function (ws) {
       var doc = m.doc;
       if (!doc || typeof doc.img !== 'string' || doc.img.indexOf('data:image/jpeg;base64,') !== 0 || doc.img.length > 300000) return;
       var br = roomIdx(doc.r);
-      boards[br] = { img: doc.img, by: String(doc.by || '').slice(0, 16), at: Date.now() };
+      if (CURQ[br] && doc.q !== CURQ[br].id) return; // 換題之前的舊黑板快照，丟掉
+      boards[br] = { img: doc.img, by: String(doc.by || '').slice(0, 16), at: Date.now(), q: CURQ[br] ? CURQ[br].id : 0 };
       others(ws, { t: 'board', doc: boards[br], r: br });
     }
   });
@@ -421,6 +690,8 @@ setInterval(function () {
   });
 }, 25000);
 
+placeTeachers(Date.now());
+setInterval(simTick, 100);
 server.listen(PORT, function () { console.log('classroom server on :' + PORT); });
 
 module.exports = { classify: classify, beats: beats };

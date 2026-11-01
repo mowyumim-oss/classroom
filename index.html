@@ -83,6 +83,16 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #btns #bj{margin-bottom:12px}
 .bmode #wbox,.gmode #wbox{display:none!important}
 @media (max-width:480px){.pbtn{padding:0 10px;font-size:15px}#gp .mid{min-height:76px}}
+#here{position:fixed;left:12px;top:calc(env(safe-area-inset-top,0px) + 12px);z-index:80;display:none;min-width:96px;min-height:64px;padding:0 20px;border-radius:14px;border:3px solid var(--fg);background:var(--panel);color:var(--fg);font:inherit;font-size:32px;font-weight:700;touch-action:manipulation;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+#here.wait{opacity:.8;font-size:16px;font-weight:600;min-height:52px;cursor:default}
+#here.go{background:#f2c230;color:#17202b;border-color:#17202b;animation:hereblink .4s infinite alternate}
+@keyframes hereblink{from{transform:scale(1)}to{transform:scale(1.12)}}
+.rollon #held{top:calc(env(safe-area-inset-top,0px) + 80px)}
+.rollon #cbtn{top:calc(env(safe-area-inset-top,0px) + 132px)}
+.rollon #cpanel{top:calc(env(safe-area-inset-top,0px) + 176px)}
+#cls{right:12px;top:calc(env(safe-area-inset-top,0px) + 104px);display:none;font-size:13px;padding:5px 10px;pointer-events:none;white-space:nowrap}
+.bmode #cls{display:none!important}
+#att{left:50%;top:calc(env(safe-area-inset-top,0px) + 104px);transform:translateX(-50%);display:none;z-index:30;text-align:center;white-space:pre-line;max-width:calc(100vw - 24px);box-sizing:border-box;line-height:1.6;pointer-events:none}
 </style>
 </head>
 <body>
@@ -90,10 +100,13 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 <div id="held" class="box">手持：板擦<button id="drop">放下</button></div>
 <div id="bar" class="box"><span id="toolname">粉筆</span><button id="swap">改用粉筆</button><button id="exit">離開黑板</button></div>
 <div id="toast" class="box"></div>
+<button id="here" type="button">到</button>
+<div id="cls" class="box"></div>
+<div id="att" class="box"></div>
 <div id="who" class="box" title="點一下可以改暱稱" style="right:12px;top:calc(env(safe-area-inset-top,0px) + 12px)"></div>
 <button id="cbtn" class="box">造型</button>
 <div id="cpanel" class="box"><div class="ttl">形狀</div><div class="row" id="shrow"></div><div class="ttl">顏色</div><div class="row" id="cwrow"></div></div>
-<div id="hint" class="box">W A S D　移動　拖曳或方向鍵　轉動視角<br>E　互動　也可以直接點擊椅子、門、窗戶、黑板、板擦、時鐘、毯子（大老二）<br>空白鍵　跳躍　R　回到教室起點</div>
+<div id="hint" class="box">W A S D　移動　拖曳或方向鍵　轉動視角<br>E　互動　也可以直接點擊椅子、門、窗戶、黑板、板擦、時鐘、毯子（大老二）<br>空白鍵　跳躍　R　回到教室起點<br>點名時，叫到你的名字就按左上角「到」（或空白鍵）</div>
 <div id="joy"><div id="knob"></div></div>
 <div id="btns"><button id="bj">跳</button><button id="bi">互動</button></div>
 <div id="wbox" class="box"><button id="wtog" class="pbtn" type="button">開窗</button><button id="wgo" class="pbtn main" type="button">翻出窗外</button></div>
@@ -105,7 +118,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 <script>
 // 自己的連線層：用 WebSocket 取代 claude.ai 的 room 和 db
 (function(){
-var ws=null,myId=null,connected=false,myPresence={},peerMap={},cache=null,handlers=[],boardCbs=[],lastBoards=[],nick=null,tryNick=null,nickFn=null,btFn=null,lastBt=null,winFn=null,lastWin=null;
+var ws=null,myId=null,connected=false,myPresence={},peerMap={},cache=null,handlers=[],boardCbs=[],lastBoards=[],nick=null,tryNick=null,nickFn=null,btFn=null,lastBt=null,winFn=null,lastWin=null,tinfoFn=null,lastTinfo=null,tchFn=null,lastTch=null,qFn=null,qsFn=null,lastQs=null,rollFn=null,bellFn=null;
 function rebuild(){
   var a=[];
   Object.keys(peerMap).forEach(function(k){a.push({peer:k,isMe:false,sameTab:false,kind:'viewer',guest:false,by:null,presence:peerMap[k]});});
@@ -133,7 +146,13 @@ function connect(){
     }else if(m.t==='board'){var br=(m.r===1||m.r===2)?m.r:0;lastBoards[br]=m.doc;boardCbs.forEach(function(f){f(snap(m.doc,br));});
     }else if(m.t==='nick'){nick=m.ok?m.n:(m.n||null);tryNick=null;if(nickFn)nickFn(m);
     }else if(m.t==='bt'){lastBt=m;if(btFn)btFn(m);
-    }else if(m.t==='win'){lastWin=m.w;if(winFn)winFn(m.w);}
+    }else if(m.t==='win'){lastWin=m.w;if(winFn)winFn(m.w);
+    }else if(m.t==='tinfo'){lastTinfo=m;if(tinfoFn)tinfoFn(m);
+    }else if(m.t==='tch'){lastTch=m;if(tchFn)tchFn(m);
+    }else if(m.t==='q'){if(qFn)qFn(m.q);
+    }else if(m.t==='qs'){lastQs=m.qs;if(qsFn)qsFn(m.qs);
+    }else if(m.t==='roll'){if(rollFn)rollFn(m);
+    }else if(m.t==='bell'){if(bellFn)bellFn(m);}
     rebuild();
   };
   ws.onclose=function(){connected=false;peerMap={};rebuild();setTimeout(connect,2000);};
@@ -159,7 +178,14 @@ window.net={
   bt:function(o){o.t='bt';send(o);},
   onWin:function(f){winFn=f;if(lastWin)f(lastWin);},
   win:function(i,o){send({t:'win',i:i,o:o?1:0});},
-  online:function(){return connected;}
+  online:function(){return connected;},
+  onTinfo:function(f){tinfoFn=f;if(lastTinfo)f(lastTinfo);},
+  onTch:function(f){tchFn=f;if(lastTch)f(lastTch);},
+  onQ:function(f){qFn=f;},
+  onQs:function(f){qsFn=f;if(lastQs)f(lastQs);},
+  onRoll:function(f){rollFn=f;},
+  onBell:function(f){bellFn=f;},
+  here:function(){send({t:'here'});}
 };
 connect();
 })();
@@ -444,7 +470,11 @@ function actDoor(d){
   if(dxz(d.x,d.z)>3.4){say('走近門再開');return;}
   d.open=!d.open;say(d.open?'門開了':'門關上了');
 }
-function actClock(){var d=new Date();say('現在時間 '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2));}
+function actClock(){
+  if(!synced){say('時間同步中…');return;}
+  var d=gameDate(),t=srvNow()%CYC;
+  say('遊戲時間 '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+'　第 '+(d.n%9+1)+' 節　'+(t<CEND?'上課中':'下課'));
+}
 function actEraser(i){
   if(held)return;
   var eb=boards[i];
@@ -503,6 +533,7 @@ function strokeTo(a,b,tl,r){
 var keys={},joy={x:0,y:0},joyId=null,drag=null;
 window.addEventListener('keydown',function(e){
   if(e.target&&e.target.tagName==='INPUT')return;
+  if(e.code==='Space'&&rollSt==='go'){e.preventDefault();if(!e.repeat)pressHere();return;} // 被叫到時，空白鍵＝「到」，不跳躍
   keys[e.code]=true;
   if(e.code==='Space')e.preventDefault();
   if(e.code==='KeyR'&&mode==='walk'&&bseat<0)reset();
@@ -776,6 +807,7 @@ function renderGame(s,inGame){
   var turnName=s.seats[s.turn]?s.seats[s.turn].n:'';
   var status=myTurn?(s.last?'輪到你了':'輪到你領出'+(s.first?'（要包含梅花 3）':'')):('等 '+turnName+(s.last?' 出牌':' 領出'));
   mid.appendChild(el('div','cap'+(myTurn?' my':''),status));
+  if(s.pz)mid.appendChild(el('div','cap','點名中，出牌倒數暫停'));
   gpan.appendChild(mid);
   var hand=el('div','hand'),n=myHand.length,cw=window.innerWidth>=700?52:40,ch=Math.round(cw*1.45),fs=cw>=52?18:15;
   var avail=Math.max(200,gpan.clientWidth-16),step=n>1?Math.min(cw+6,(avail-cw)/(n-1)):0;
@@ -829,6 +861,7 @@ function renderRes(){
   ac.appendChild(ok);resC.appendChild(ac);
 }
 function updTimer(){
+  if(TB&&TB.pz)dl=performance.now()+(TB.tl||0);
   if(tmEl){var t=Math.max(0,Math.ceil((dl-performance.now())/1000))+' 秒';if(tmEl.textContent!==t)tmEl.textContent=t;}
   if(btn.quit){var t2=(performance.now()-quitAt<3000)?'再按一次確認認輸':'認輸離開';if(btn.quit.textContent!==t2)btn.quit.textContent=t2;}
 }
@@ -871,22 +904,182 @@ function saveBoard(){
   if(url.length>230000){var t=document.createElement('canvas');t.width=800;t.height=220;t.getContext('2d').drawImage(bc,0,0,800,220);url=t.toDataURL('image/jpeg',0.7);}
   if(url.length>230000)return;
   saving=true;dirty=false;
-  boardRef.set({img:url,by:sid,r:dirtyR,at:Date.now()}).catch(function(){}).then(function(){saving=false;});
+  boardRef.set({img:url,by:sid,r:dirtyR,q:(qCur[dirtyR]?qCur[dirtyR].id:0),at:Date.now()}).catch(function(){}).then(function(){saving=false;});
 }
 function applySnap(snap){
   if(!snap.exists)return;
   var d=snap.data();
   if(!d||typeof d.img!=='string'||d.img.indexOf('data:image/jpeg;base64,')!==0||d.by===sid)return;
   var r=(snap.r===1||snap.r===2)?snap.r:0,B=boards[r];
+  if(qCur[r]&&d.q!==qCur[r].id)return; // 換題之前的舊快照
+  snapQ[r]=d.q;
   if(r===curR&&performance.now()-lastAct<3000)return;
   var im=new Image();im.onload=function(){B.x.drawImage(im,0,0,BW,BHc);B.t.needsUpdate=true;};im.src=d.img;
 }
 try{if(window.claude&&window.claude.use)window.claude.use('db').then(function(d){if(!d)return;boardRef=d.doc('classroom/board');boardRef.onSnapshot(applySnap,function(){});}).catch(function(){});}catch(e){}
+// ───────── 老師（伺服器控制的 NPC）、點名、黑板題目、遊戲時間 ─────────
+var CYC=450000,CEND=375000,srvOff=0,synced=false,teachers=[],qCur=[null,null,null],snapQ=[null,null,null];
+function srvNow(){return Date.now()+srvOff;}
+// 遊戲時間：一節課 = 遊戲 60 分鐘（現實 7 分 30 秒），一天 9 節，第 1 節從 8:00 開始
+function gameDate(){
+  var t=srvNow(),n=Math.floor(t/CYC),gs=(t%CYC)/1000*8;
+  return {n:n,getHours:function(){return 8+(n%9);},getMinutes:function(){return Math.floor(gs/60)%60;},getSeconds:function(){return Math.floor(gs)%60;}};
+}
+var clsEl=document.getElementById('cls'),clsTxt='';
+function mmss(ms){var s=Math.max(0,Math.ceil(ms/1000));return Math.floor(s/60)+':'+('0'+s%60).slice(-2);}
+function updHud(){
+  if(!synced)return;
+  var t=srvNow(),n=Math.floor(t/CYC),ph=t%CYC,on=ph<CEND;
+  var txt='第 '+(n%9+1)+' 節　'+(on?'上課中　剩 '+mmss(CEND-ph):'下課　'+mmss(CYC-ph)+' 後上課');
+  if(txt!==clsTxt){clsTxt=txt;clsEl.textContent=txt;}
+  clsEl.style.display='block';
+}
+// 聲音（瀏覽器要等使用者按過東西才能發聲）
+var AC=null;
+function audio(){
+  if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+  if(AC&&AC.state==='suspended'){try{AC.resume();}catch(e){}}
+  return AC;
+}
+['pointerdown','keydown'].forEach(function(ev){window.addEventListener(ev,function(){audio();},{passive:true});});
+function beep(fr,d,type){
+  var a=audio();if(!a)return;var t0=a.currentTime;
+  fr.forEach(function(f,i){
+    var o=a.createOscillator(),g=a.createGain();o.type=type||'sine';o.frequency.value=f;
+    g.gain.setValueAtTime(0.0001,t0+i*d);g.gain.exponentialRampToValueAtTime(0.22,t0+i*d+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t0+(i+1)*d);
+    o.connect(g);g.connect(a.destination);o.start(t0+i*d);o.stop(t0+(i+1)*d+0.03);
+  });
+}
+function bubTex(t){
+  var c=document.createElement('canvas');c.width=512;c.height=96;var x=c.getContext('2d');
+  var fs=40;x.font='bold '+fs+'px sans-serif';
+  while(x.measureText(t).width>430&&fs>20){fs-=2;x.font='bold '+fs+'px sans-serif';}
+  var w=Math.min(500,x.measureText(t).width+48),l=(512-w)/2,r=14;
+  x.fillStyle='rgba(255,255,255,.96)';x.strokeStyle='#2b2f36';x.lineWidth=3;
+  x.beginPath();x.moveTo(l+r,5);x.arcTo(l+w,5,l+w,65,r);x.arcTo(l+w,65,l,65,r);x.arcTo(l,65,l,5,r);x.arcTo(l,5,l+w,5,r);x.closePath();x.fill();x.stroke();
+  x.beginPath();x.moveTo(244,64);x.lineTo(256,90);x.lineTo(268,64);x.closePath();x.fill();
+  x.fillStyle='#17202b';x.textAlign='center';x.textBaseline='middle';x.fillText(t,256,36);
+  return new THREE.CanvasTexture(c);
+}
+function makeTeacher(info){
+  var g=new THREE.Group();scene.add(g);
+  var s=SHAPES[3],col=/^#[0-9a-f]{6}$/i.test(info.c)?info.c:'#888888';
+  var m=new THREE.Mesh(s.g(),mat(new THREE.Color(col).getHex(),{roughness:.5}));m.castShadow=true;g.add(m);
+  var f=new THREE.Mesh(new THREE.BoxGeometry(s.fw,0.18,0.05),mat(0x1c1c1c));f.position.set(0,s.fy,s.fz);m.add(f);
+  box(0.95,0.07,0.95,0x20252c,0,0.94,0,m);box(0.5,0.1,0.5,0x20252c,0,0.87,0,m);box(0.12,0.4,0.04,0xc0392b,0,0.1,0.36,m); // 方帽與領帶，一眼認得出老師
+  var nm=String(info.n||'老師').slice(0,6)+'・'+String(info.s||'').slice(0,3);
+  var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:labelTex(nm),depthTest:false}));sp.scale.set(1.8,0.45,1);sp.position.set(0,1.5,0);sp.renderOrder=5;g.add(sp);
+  var bub=new THREE.Sprite(new THREE.SpriteMaterial({depthTest:false,transparent:true}));bub.scale.set(3.2,0.6,1);bub.position.set(0,2.15,0);bub.renderOrder=6;bub.visible=false;g.add(bub);
+  return {g:g,m:m,bub:bub,say:'',bt:'',init:false,st:0};
+}
+function updTeachers(dt){
+  var tm=performance.now()/1000;
+  teachers.forEach(function(t){
+    if(typeof t.tx!=='number')return;
+    if(!t.init){t.px=t.tx;t.pz=t.tz;t.pf=t.tf;t.py=groundAt(t.tx,t.tz);t.init=true;}
+    var k=Math.min(1,8*dt);t.px+=(t.tx-t.px)*k;t.pz+=(t.tz-t.pz)*k;
+    t.pf+=Math.atan2(Math.sin(t.tf-t.pf),Math.cos(t.tf-t.pf))*Math.min(1,10*dt);
+    t.py+=(groundAt(t.px,t.pz)-t.py)*Math.min(1,14*dt);
+    var bob=t.st===1?Math.abs(Math.sin(tm*9))*0.09:(t.st===2?Math.abs(Math.sin(tm*12))*0.05:0);
+    t.g.position.set(t.px,t.py+0.5+bob,t.pz);t.m.rotation.y=t.pf;
+    if(t.bt!==t.say){
+      t.bt=t.say;if(t.bub.material.map)t.bub.material.map.dispose();
+      if(t.say){t.bub.material.map=bubTex(t.say);t.bub.material.needsUpdate=true;}
+      t.bub.visible=!!t.say;
+    }
+  });
+  // 老師經過門口時，門自動開（只是畫面效果，不影響你自己開關門）
+  doors.forEach(function(d){
+    var o=false;
+    for(var i=0;i<teachers.length;i++){var t=teachers[i];if(t.init&&Math.abs(t.px-d.x)<1.3&&Math.abs(t.pz-d.z)<1.2){o=true;break;}}
+    d.tOpen=o;
+  });
+}
+net.onTinfo(function(m){
+  if(teachers.length)return;
+  (m.ts||[]).forEach(function(inf){teachers.push(makeTeacher(inf));});
+});
+net.onTch(function(m){
+  if(typeof m.now!=='number')return;
+  srvOff=m.now-Date.now();synced=true;
+  (m.ts||[]).forEach(function(u,i){
+    var t=teachers[i];if(!t||!u||typeof u.x!=='number'||typeof u.z!=='number')return;
+    t.tx=u.x;t.tz=u.z;t.tf=typeof u.f==='number'?u.f:0;t.st=u.s|0;t.say=typeof u.b==='string'?u.b.slice(0,20):'';
+  });
+});
+// 黑板題目：伺服器只傳題目文字，每個人的畫面自己把字寫在黑板上
+function wrapLines(x,t,maxW){
+  var out=[],cur='';
+  Array.from(t).forEach(function(ch){if(cur&&x.measureText(cur+ch).width>maxW){out.push(cur);cur=ch;}else cur+=ch;});
+  if(cur)out.push(cur);return out;
+}
+function drawQ(r,q){
+  var B=boards[r];if(!B)return;var x=B.x;
+  x.fillStyle=BG;x.fillRect(0,0,BW,BHc);x.textBaseline='top';x.textAlign='left';
+  x.fillStyle='#f2e6a0';x.font='bold 40px sans-serif';
+  x.fillText('第 '+q.p+' 節　'+q.subj+'　'+q.teacher+'　第 '+q.k+' 題',70,34);
+  x.fillStyle='#fff';x.font='bold 60px sans-serif';
+  wrapLines(x,String(q.text||''),BW-140).slice(0,4).forEach(function(l,i){x.fillText(l,70,108+i*80);});
+  B.t.needsUpdate=true;
+}
+function myRoom(){
+  if(p.x<-8||p.x>8)return -1;
+  return p.z>=-7&&p.z<7?0:(p.z>=7&&p.z<21?1:(p.z>=21&&p.z<=35?2:-1));
+}
+net.onQ(function(q){
+  if(!q||!(q.r>=0&&q.r<=2))return;
+  qCur[q.r]=q;drawQ(q.r,q);
+  if(dirty&&dirtyR===q.r)dirty=false;
+  if(myRoom()===q.r)say('黑板換了新題目（'+q.subj+'）');
+});
+net.onQs(function(qs){
+  (qs||[]).forEach(function(q,i){
+    if(!q)return;qCur[i]=q;
+    if(snapQ[i]===q.id)return; // 伺服器給的黑板快照已經包含這一題
+    drawQ(i,q);
+  });
+});
+// 點名：只有被叫到名字的那幾秒按「到」才算
+var hereB=document.getElementById('here'),attB=document.getElementById('att'),rollSt='off',rollT=0,attT=0;
+function setRoll(st,txt){
+  rollSt=st;hereB.style.display=st==='off'?'none':'block';hereB.className=st==='go'?'go':'wait';
+  if(txt!=null)hereB.textContent=txt;
+  document.body.classList.toggle('rollon',st!=='off');
+}
+function pressHere(){
+  if(rollSt==='off'||hereB.textContent==='已到')return;
+  net.here();
+}
+hereB.addEventListener('pointerdown',function(e){e.preventDefault();pressHere();});
+function showAtt(m){
+  var names=m.p||[],s=names.join('、');if(s.length>60)s=s.slice(0,58)+'…';
+  attB.textContent='點名結束　出席 '+names.length+' / '+m.k+' 人'+(s?'\n'+s:'')+(m.me?'':'\n（你這次記缺席）');
+  attB.style.display='block';clearTimeout(attT);attT=setTimeout(function(){attB.style.display='none';},9000);
+}
+net.onRoll(function(m){
+  if(m.a==='start'){setRoll('wait','等叫到你');say('點名開始，叫到你的名字時按「到」');beep([660],0.18);}
+  else if(m.a==='call'){
+    setRoll('go','到');beep([988,1319],0.12);
+    try{if(navigator.vibrate)navigator.vibrate([60,40,60]);}catch(e){}
+    clearTimeout(rollT);rollT=setTimeout(function(){if(rollSt==='go'){setRoll('wait','來不及了');say('沒趕上，這次記缺席');}},(m.ms||3000)+800);
+  }
+  else if(m.a==='ok'){clearTimeout(rollT);setRoll('wait','已到');say('已回應「到」');}
+  else if(m.a==='early'){say('還沒叫到你，等老師叫你的名字');}
+  else if(m.a==='late'){clearTimeout(rollT);setRoll('wait','來不及了');say('來不及了，這次記缺席');}
+  else if(m.a==='end'){clearTimeout(rollT);setRoll('off');showAtt(m);}
+});
+net.onBell(function(m){
+  if(m.k==='start'){beep([784,659,784,659],0.28,'triangle');say('上課鐘響　第 '+(m.n%9+1)+' 節開始');}
+  else{beep([523,659,784,1047],0.28,'triangle');say('下課鐘響');}
+});
+
 var clk=new THREE.Clock(),bcam=new THREE.Vector3(),bt=new THREE.Vector3(0,BY,BZ+0.07);
 function tick(){
-  var dt=Math.min(clk.getDelta(),0.05),now=new Date();
-  if(now.getSeconds()!==lastSec){lastSec=now.getSeconds();drawClock(now);}
-  doors.forEach(function(d){d.piv.rotation.y+=((d.open?-Math.PI/2:0)-d.piv.rotation.y)*Math.min(1,6*dt);});
+  var dt=Math.min(clk.getDelta(),0.05);
+  var ck=Math.floor(srvNow()/250);if(ck!==lastSec){lastSec=ck;drawClock(gameDate());updHud();}
+  if(rollSt!=='off'&&!net.online())setRoll('off');
+  updTeachers(dt);
+  doors.forEach(function(d){d.piv.rotation.y+=(((d.open||d.tOpen)?-Math.PI/2:0)-d.piv.rotation.y)*Math.min(1,6*dt);});
   wins.forEach(function(w){w.piv.rotation.y+=((w.open?Math.PI/2:0)-w.piv.rotation.y)*Math.min(1,6*dt);});
   updWbox();
   if(mode==='walk'){
