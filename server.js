@@ -87,7 +87,8 @@ function cleanPresence(p) {
 function pubPresence(ws) {
   var o = Object.assign({}, ws.presence);
   o.n = ws.nick;
-  o.g = ws.seat >= 0 ? ws.seat : -1; // 大老二座位由伺服器決定，不接受玩家自填
+  o.g = ws.seat >= 0 ? ws.seat : -1;
+  o.q = ws.toi >= 0 ? ws.toi : -1; // 馬桶座位同樣由伺服器決定 // 大老二座位由伺服器決定，不接受玩家自填
   return o;
 }
 function presenceOut(ws) {
@@ -309,6 +310,7 @@ function onTurnTimeout() {
 function joinTable(ws) {
   if (!ws.nick) return '請先設定暱稱';
   if (ws.seat >= 0) return null;
+  if (ws.toi >= 0) return '先離開馬桶';
   if (T.ph === 'playing') return '牌局進行中，等下一局';
   if (T.ph === 'ended') return '結算中，稍後再加入';
   var i = T.seats.indexOf(null);
@@ -409,6 +411,8 @@ for (var ri = 0; ri < 3; ri++) {
   if (ri > 0) link('ro' + (ri - 1), 'ro' + ri);
 }
 link('oo', 'ro0');
+addNode('to', -9.5, -18); addNode('td', -8, -18); addNode('ti', -6.5, -18); link('oo', 'to'); link('to', 'td'); link('td', 'ti');
+addNode('ro3', -9.5, 38); link('ro2', 'ro3');
 
 function ndist(a, b) { return Math.hypot(TN[a].x - TN[b].x, TN[a].z - TN[b].z); }
 function plan(from, to) { // 最短路線，回傳「從 from 之後」要經過的節點
@@ -589,6 +593,7 @@ function simTick() {
   TCH.forEach(function (t) { t.writing = false; });
   R.forEach(function (r) { roomTick(r, n, ph); });
   TCH.forEach(function (t) { stepTeacher(t, dt, now); });
+  janStep(dt, now);
   if (bellS !== n) { bellS = n; sendAll({ t: 'bell', k: 'start', n: n }); }
   if (ph >= CLASS_END && bellE !== n) { bellE = n; sendAll({ t: 'bell', k: 'end', n: n }); }
   if (tickNo % 2) return; // 位置每 0.2 秒廣播一次，沒變化就不送（每 2 秒補送一次校時）
@@ -598,6 +603,106 @@ function simTick() {
   });
   var js = JSON.stringify(lastArr);
   if (js !== lastTj || now - lastTjAt > 2000) { lastTj = js; lastTjAt = now; sendAll({ t: 'tch', now: now, ts: lastArr }); }
+  var jm = JSON.stringify(janMsg());
+  if (jm !== lastJm || now - lastJmAt > 2000) { lastJm = jm; lastJmAt = now; sendAll(JSON.parse(jm)); }
+}
+
+// ───────── 廁所與清潔工 ─────────
+// 三個馬桶：坐上去按「大號」，起來後馬桶就是「沒沖水」，要有人互動沖水。
+// 沒沖水超過 1 分鐘，清潔工跑去站在最後一個超時的人旁邊，直到那個馬桶被沖（任何人沖都算）；
+// 若又有人超時，改去找比較晚的那一位。
+var TO = [0, 1, 2].map(function () { return { o: null, p: 0, at: 0, by: null }; });
+var JANV = 4.5, OVERDUE = 60000, lastJm = '', lastJmAt = 0;
+function toiMsg() { return { t: 'toi', s: TO.map(function (x) { return { o: x.o ? x.o.id : null, p: x.p }; }) }; }
+function toiAll() { sendAll(toiMsg()); }
+function standToilet(ws) {
+  var i = ws.toi;
+  if (i == null || i < 0) return;
+  ws.toi = -1;
+  var x = TO[i];
+  if (x.o === ws) { x.o = null; if (x.p) { x.at = Date.now(); x.by = ws; } }
+  presenceOut(ws);
+  toiAll();
+}
+function onToi(ws, m) {
+  if (!ws.nick) return;
+  var i = Math.floor(Number(m.i));
+  if (m.a === 'sit') {
+    if (!(i >= 0 && i < 3)) return;
+    if (ws.toi >= 0 || ws.seat >= 0) { sendTo(ws, { t: 'toi', err: '現在不能坐馬桶' }); return; }
+    var x = TO[i];
+    if (x.o) { sendTo(ws, { t: 'toi', err: '有人在用' }); return; }
+    if (x.p) { sendTo(ws, { t: 'toi', err: '要先沖水' }); return; }
+    x.o = ws; ws.toi = i; presenceOut(ws); toiAll();
+  } else if (m.a === 'poo') {
+    if (ws.toi >= 0 && !TO[ws.toi].p) { TO[ws.toi].p = 1; toiAll(); }
+  } else if (m.a === 'up') standToilet(ws);
+  else if (m.a === 'flush') {
+    if (!(i >= 0 && i < 3) || TO[i].o) return;
+    TO[i].p = 0; TO[i].by = null;
+    sendAll({ t: 'flush', i: i }); toiAll();
+  }
+}
+var J = { x: -6.5, z: -18, f: 0, st: 0, at: 'ti', path: [], dest: 'ti', off: false, zone: '', say: '', sayUntil: 0, tgt: null, remind: 0 };
+function janMsg() {
+  return { t: 'jan', x: Math.round(J.x * 100) / 100, z: Math.round(J.z * 100) / 100, f: Math.round(J.f * 100) / 100, s: J.st, b: Date.now() < J.sayUntil ? J.say : '' };
+}
+function corrNode(z) {
+  var b = 'ro0', bd = 1e9;
+  ['to', 'oo', 'ro0', 'ro1', 'ro2', 'ro3'].forEach(function (k) { var d = Math.abs(TN[k].z - z); if (d < bd) { bd = d; b = k; } });
+  return b;
+}
+// 目標所在的區域：能直線走過去的（走廊、廁所、辦公室、教室）給入口節點；其他地方只能走到最近的走廊節點
+function zoneOf(p) {
+  if (p.y > 2.6) return { k: 'x', e: 'ro3', free: false };
+  if (p.x > -11 && p.x < -8) return { k: 'S', e: corrNode(p.z), free: true };
+  if (p.x >= -8 && p.x <= 8) {
+    if (p.z >= -21 && p.z < -15) return { k: 'ti', e: 'ti', free: true };
+    if (p.z >= -15 && p.z < -7) return { k: 'oi', e: 'oi', free: true };
+    for (var i = 0; i < 3; i++) if (p.z >= RZ[i][0] && p.z <= RZ[i][1]) return { k: 'ri' + i, e: 'ri' + i, free: true };
+  }
+  return { k: 'x', e: corrNode(p.z), free: false };
+}
+function pickTarget(now) {
+  var b = null;
+  TO.forEach(function (x) {
+    if (x.p && !x.o && x.by && x.by.readyState === 1 && x.by.presence && now - x.at >= OVERDUE && (!b || x.at > b.at)) b = x;
+  });
+  return b;
+}
+function jmove(tx, tz, dt) {
+  var dx = tx - J.x, dz = tz - J.z, d = Math.hypot(dx, dz), st = JANV * dt / 1000;
+  if (d <= 0.001) return true;
+  var s = Math.min(st, d);
+  J.x += dx / d * s; J.z += dz / d * s; J.f = Math.atan2(dx, dz); J.st = 1;
+  return false;
+}
+function janStep(dt, now) {
+  J.st = 0;
+  var tg = pickTarget(now), zn = null, dest = 'ti';
+  if (tg) {
+    zn = zoneOf(tg.by.presence); dest = zn.e;
+    if (J.tgt !== tg.by) { J.tgt = tg.by; J.say = tg.by.nick + '，請沖水！'; J.sayUntil = now + 4000; J.remind = now + 8000; }
+    else if (now > J.remind) { J.say = '請沖水！'; J.sayUntil = now + 2500; J.remind = now + 8000; }
+  } else J.tgt = null;
+  if (J.off) {
+    if (tg && zn.free && zn.k === J.zone) {
+      var pr = tg.by.presence, gx = pr.x - 1.1, gz = pr.z;
+      if (Math.hypot(gx - J.x, gz - J.z) > 0.4) jmove(gx, gz, dt);
+      else J.f = Math.atan2(pr.x - J.x, pr.z - J.z);
+      return;
+    }
+    var n = TN[J.at];
+    if (jmove(n.x, n.z, dt)) J.off = false;
+    return;
+  }
+  if (J.at !== dest) {
+    if (J.dest !== dest || !J.path.length) { J.dest = dest; J.path = plan(J.at, dest); }
+    if (J.path.length) { var n2 = TN[J.path[0]]; if (jmove(n2.x, n2.z, dt)) J.at = J.path.shift(); }
+    return;
+  }
+  if (tg && zn.free) { J.off = true; J.zone = zn.k; return; }
+  if (!tg) J.f = 0;
 }
 
 // ───────── 連線 ─────────
@@ -622,7 +727,7 @@ function validStrokes(d) {
 wss.on('connection', function (ws) {
   if (clients.size >= MAX_CLIENTS) { ws.close(1013, 'full'); return; }
   ws.id = crypto.randomBytes(4).toString('hex');
-  ws.nick = null; ws.presence = null; ws.seat = -1; ws.rr = -1; ws.hit = false; ws.slotAt = 0; ws.slotMs = 0; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
+  ws.nick = null; ws.presence = null; ws.seat = -1; ws.toi = -1; ws.rr = -1; ws.hit = false; ws.slotAt = 0; ws.slotMs = 0; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
   clients.add(ws);
   ws.on('pong', function () { ws.alive = true; });
   ws.on('error', function () {});
@@ -635,6 +740,7 @@ wss.on('connection', function (ws) {
   sendTo(ws, { t: 'tinfo', ts: TCH.map(function (t) { return { n: t.name, s: t.subj, c: t.color }; }) });
   sendTo(ws, { t: 'tch', now: Date.now(), ts: lastArr });
   sendTo(ws, { t: 'qs', qs: CURQ });
+  sendTo(ws, toiMsg()); sendTo(ws, janMsg());
 
   ws.on('message', function (data) {
     ws.alive = true;
@@ -651,6 +757,7 @@ wss.on('connection', function (ws) {
     }
     else if (m.t === 'bt') onBt(ws, m); // 沒有暱稱的人會在 joinTable 被擋下
     else if (m.t === 'here') onHere(ws); // 點名：按「到」
+    else if (m.t === 'toi') onToi(ws, m);
     else if (!ws.nick) return; // 沒有暱稱的人不能寫黑板
     else if (m.t === 'emit') {
       if (m.topic !== 'board') return;
@@ -676,7 +783,7 @@ wss.on('connection', function (ws) {
   });
 
   ws.on('close', function () {
-    leaveTable(ws);
+    leaveTable(ws); standToilet(ws);
     clients.delete(ws);
     if (ws.nick) others(ws, { t: 'leave', peer: ws.id });
   });
