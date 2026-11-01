@@ -493,7 +493,7 @@ function stepTeacher(t, dt, now) {
 var R = [0, 1, 2].map(function (i) { return { i: i, n: -1, st: 'wait', list: [], names: [], k: 0, slot: 0, callStart: 0, rollEnd: 0, j: -1, base: 0, q1: false, q2: false, endSaid: false }; });
 var CURQ = [null, null, null], QSEQ = 0;
 
-function inRoom(p, i) { return p.x >= -8 && p.x <= 8 && p.z >= RZ[i][0] && p.z <= RZ[i][1]; }
+function inRoom(p, i) { return p.y < 2.5 && p.x >= -8 && p.x <= 8 && p.z >= RZ[i][0] && p.z <= RZ[i][1]; }
 function sendAll(o) {
   var s = JSON.stringify(o);
   clients.forEach(function (c) { if (c.readyState === 1) c.send(s); });
