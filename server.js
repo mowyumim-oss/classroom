@@ -24,6 +24,101 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
   } catch (e) { console.log('supabase init failed', e.message); }
 }
 
+// ───────── 抽獎（獎品表與機率在 gacha.js；結果、扣款、背包都由伺服器決定）─────────
+var G = null;
+try { G = require('./gacha.js'); } catch (e) { console.log('gacha.js 讀取失敗，抽獎功能關閉：' + e.message); }
+var GCAT_JSON = G ? JSON.stringify({ t: 'gcat', cat: G.catalog() }) : null;
+
+function normRow(row) {
+  var inv = G ? G.cleanInv(row.inv) : [];
+  return {
+    coins: Math.max(0, row.coins | 0), stars: Math.max(0, row.stars | 0), inv: inv,
+    pity: G ? G.cleanPity(row.pity) : {}, equip: G ? G.cleanEquip(row.equip, inv) : {}
+  };
+}
+function applyRow(ws, r) { ws.coins = r.coins; ws.stars = r.stars; ws.inv = r.inv; ws.pity = r.pity; ws.equip = r.equip; }
+function sendGinv(ws) {
+  sendTo(ws, { t: 'ginv', ok: !!(G && sb && ws.uid && !ws.gOff), coins: ws.coins, stars: ws.stars, inv: ws.inv, pity: ws.pity, equip: ws.equip });
+}
+// 同一個玩家的資料庫操作排隊一個一個做：先讀最新資料 → 計算 → 用「金幣、星星幣沒被別人改過」當條件寫回。
+// 寫回失敗（剛好被別的操作改了）就重讀重算，所以連點、同時拿獎勵都不會多扣或漏扣。
+function txn(ws, compute) {
+  var cols = ws.gOff ? 'coins' : 'coins,stars,inv,pity,equip';
+  function attempt(k) {
+    return sb.from('profiles').select(cols).eq('id', ws.uid).maybeSingle().then(function (r) {
+      if (r.error || !r.data) throw 'dberr';
+      var row = normRow(r.data), c = compute(row);
+      if (c.err) return { err: c.err };
+      var q = sb.from('profiles').update(c.patch).eq('id', ws.uid).eq('coins', r.data.coins);
+      if (!ws.gOff) q = q.eq('stars', r.data.stars);
+      return q.select('coins').maybeSingle().then(function (u) {
+        if (u.error) throw 'dberr';
+        if (!u.data) return k < 3 ? attempt(k + 1) : { err: 'busy' };
+        return { ok: true, c: c };
+      });
+    });
+  }
+  var run = function () {
+    return attempt(0).catch(function (e) { console.log('txn failed:', e && e.message ? e.message : e); return { err: 'dberr' }; });
+  };
+  ws.gq = (ws.gq || Promise.resolve()).then(run);
+  return ws.gq;
+}
+function gfail(ws, r) { sendTo(ws, { t: 'gres', ok: false, r: r }); }
+function onGacha(ws, m) {
+  if (!ws.uid) { gfail(ws, 'guest'); return; }
+  if (!G || !sb || ws.gOff) { gfail(ws, 'off'); return; }
+  if (ws.gPend >= 3) { gfail(ws, 'busy'); return; }
+  var compute;
+  if (m.a === 'draw') {
+    var pool = typeof m.pool === 'string' ? m.pool : '', n = Number(m.n), pay = m.pay === 'star' ? 'star' : 'coin', CF = G.CFG;
+    if (!Object.prototype.hasOwnProperty.call(G.POOLS, pool) || !(n === 1 || n === 10)) { gfail(ws, 'bad'); return; }
+    var cost = pay === 'coin' ? (n === 1 ? CF.coinOne : CF.coinTen) : (n === 1 ? CF.starOne : CF.starTen);
+    compute = function (row) {
+      if (pay === 'coin' && row.coins < cost) return { err: 'coins' };
+      if (pay === 'star' && row.stars < cost) return { err: 'stars' };
+      var r = G.draw(pool, row.pity[pool] | 0, row.inv, n);
+      var pity = Object.assign({}, row.pity); pity[pool] = r.pity;
+      var coins = row.coins - (pay === 'coin' ? cost : 0), stars = row.stars - (pay === 'star' ? cost : 0) + r.stars;
+      return { patch: { coins: coins, stars: stars, inv: r.inv, pity: pity },
+        apply: { coins: coins, stars: stars, inv: r.inv, pity: pity, equip: row.equip }, out: { n: n, res: r.res } };
+    };
+  } else if (m.a === 'equip') {
+    var slot = m.slot, id = m.id;
+    if (typeof slot !== 'string' || G.SLOTS.indexOf(slot) < 0 || !(id === null || typeof id === 'string')) { gfail(ws, 'bad'); return; }
+    compute = function (row) {
+      var eq = Object.assign({}, row.equip);
+      if (id === null) delete eq[slot];
+      else {
+        var it = Object.prototype.hasOwnProperty.call(G.BY_ID, id) ? G.BY_ID[id] : null;
+        if (!it || it.slot !== slot || row.inv.indexOf(id) < 0) return { err: 'bad' };
+        eq[slot] = id;
+      }
+      return { patch: { equip: eq }, apply: { coins: row.coins, stars: row.stars, inv: row.inv, pity: row.pity, equip: eq } };
+    };
+  } else return;
+  ws.gPend++;
+  txn(ws, compute).then(function (x) {
+    ws.gPend--;
+    if (!x.ok) { gfail(ws, x.err || 'dberr'); sendGinv(ws); return; }
+    applyRow(ws, x.c.apply);
+    if (m.a === 'draw') sendTo(ws, { t: 'gres', ok: true, n: x.c.out.n, res: x.c.out.res });
+    sendGinv(ws);
+    if (m.a === 'equip') presenceOut(ws); // 其他玩家馬上看到新造型
+  });
+}
+function readProfile(ws, uid) {
+  ws.gOff = false;
+  return sb.from('profiles').select('nickname,coins,stars,inv,pity,equip').eq('id', uid).maybeSingle().then(function (p) {
+    if (p.error && /stars|inv|pity|equip|column/i.test(p.error.message || '')) {
+      ws.gOff = true; // 資料庫還沒加抽獎欄位：只關掉抽獎，登入與金幣照常
+      console.log('profiles 缺少抽獎欄位，請在 Supabase 執行 supabase-gacha.sql');
+      return sb.from('profiles').select('nickname,coins').eq('id', uid).maybeSingle();
+    }
+    return p;
+  });
+}
+
 var server = http.createServer(function (req, res) {
   var u = req.url.split('?')[0];
   if (u === '/' || u === '/index.html') {
@@ -78,7 +173,7 @@ function onAuth(ws, m) {
   sb.auth.getUser(m.token).then(function (r) {
     if (!r.data || !r.data.user) throw 'bad';
     user = r.data.user;
-    return sb.from('profiles').select('nickname,coins').eq('id', user.id).maybeSingle();
+    return readProfile(ws, user.id);
   }).then(function (p) {
     if (p.error) { console.log('profile read failed:', p.error.message); throw 'dberr'; }
     if (p.data) return p.data;
@@ -98,8 +193,10 @@ function onAuth(ws, m) {
     var n = row.nickname;
     if (nickTaken(n, ws)) { sendTo(ws, { t: 'auth', ok: false, r: 'taken' }); return; }
     ws.uid = user.id; ws.coins = row.coins | 0; ws.nick = n;
+    var gr = normRow(row); ws.stars = gr.stars; ws.inv = gr.inv; ws.pity = gr.pity; ws.equip = gr.equip;
     sendTo(ws, { t: 'nick', ok: true, n: n });
     sendTo(ws, { t: 'auth', ok: true, n: n, coins: ws.coins });
+    sendGinv(ws);
     presenceOut(ws);
   }).catch(function (e) {
     ws.authBusy = false;
@@ -138,6 +235,7 @@ function pubPresence(ws) {
   var o = Object.assign({}, ws.presence);
   o.n = ws.nick;
   o.g = ws.seat >= 0 ? ws.tb * 4 + ws.seat : -1;
+  if (ws.equip) { for (var ek in ws.equip) { o.e = ws.equip; break; } } // 穿戴由伺服器決定（玩家自己傳的 e 會被 cleanPresence 丟掉）
   o.q = ws.toi >= 0 ? ws.toi : -1; // 馬桶座位同樣由伺服器決定 // 大老二座位由伺服器決定，不接受玩家自填
   return o;
 }
@@ -267,10 +365,14 @@ function advance() {
 var COIN_BY_RANK = [5, 3, 1, 0];
 function addCoins(ws, n) {
   if (!sb || !ws || !ws.uid || n <= 0) return;
-  sb.from('profiles').update({ coins: (ws.coins | 0) + n }).eq('id', ws.uid).select('coins').single().then(function (r) {
-    if (r.error || !r.data) { console.log('coin update failed:', r.error ? r.error.message : 'no data'); return; }
-    ws.coins = r.data.coins;
+  txn(ws, function (row) {
+    var c = row.coins + n;
+    return { patch: { coins: c }, apply: { coins: c, stars: row.stars, inv: row.inv, pity: row.pity, equip: row.equip } };
+  }).then(function (x) {
+    if (!x.ok) { console.log('coin update failed:', x.err); return; }
+    applyRow(ws, x.c.apply);
     sendTo(ws, { t: 'auth', ok: true, n: ws.nick, coins: ws.coins });
+    sendGinv(ws);
   });
 }
 function payCoins(tb) {
@@ -891,15 +993,16 @@ function validStrokes(d) {
 wss.on('connection', function (ws) {
   if (clients.size >= MAX_CLIENTS) { ws.close(1013, 'full'); return; }
   ws.id = crypto.randomBytes(4).toString('hex');
-  ws.uid = null; ws.coins = 0; ws.authBusy = false; ws.nick = null; ws.presence = null; ws.seat = -1; ws.tb = -1; ws.toi = -1; ws.rr = -1; ws.hit = false; ws.slotAt = 0; ws.slotMs = 0; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
+  ws.uid = null; ws.coins = 0; ws.stars = 0; ws.inv = []; ws.pity = G ? G.cleanPity(null) : {}; ws.equip = {}; ws.gOff = false; ws.gq = null; ws.gPend = 0; ws.authBusy = false; ws.nick = null; ws.presence = null; ws.seat = -1; ws.tb = -1; ws.toi = -1; ws.rr = -1; ws.hit = false; ws.slotAt = 0; ws.slotMs = 0; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
   clients.add(ws);
   ws.on('pong', function () { ws.alive = true; });
   ws.on('error', function () {});
 
   var peers = [];
   clients.forEach(function (c) { if (c !== ws && c.nick && c.presence) peers.push({ peer: c.id, presence: pubPresence(c) }); });
-  sendTo(ws, { t: 'hello', v: '1.6', id: ws.id, peers: peers, boards: boards });
+  sendTo(ws, { t: 'hello', v: '1.7', id: ws.id, peers: peers, boards: boards });
   sendLabels(ws);
+  if (GCAT_JSON && ws.readyState === 1) ws.send(GCAT_JSON);
   sendTo(ws, { t: 'win', w: W });
   sendTo(ws, { t: 'tinfo', ts: TCH.map(function (t) { return { n: t.name, s: t.subj, c: t.color }; }) });
   sendTo(ws, { t: 'tch', now: Date.now(), ts: lastArr });
@@ -923,6 +1026,7 @@ wss.on('connection', function (ws) {
     else if (m.t === 'bt') onBt(ws, m); // 沒有暱稱的人會在 joinTable 被擋下
     else if (m.t === 'here') onHere(ws); // 點名：按「到」
     else if (m.t === 'toi') onToi(ws, m);
+    else if (m.t === 'gacha') onGacha(ws, m); // 抽獎與換裝（只有登入帳號可用）
     else if (!ws.nick) return; // 沒有暱稱的人不能寫黑板
     else if (m.t === 'emit') {
       if (m.topic !== 'board') return;
