@@ -1,9 +1,9 @@
 {
   "name": "classroom",
-  "version": "1.5.0",
-  "description": "3D multiplayer classroom (teachers, roll call, board questions)",
+  "version": "1.6.0",
+  "description": "3D multiplayer classroom (teachers, roll call, board questions, accounts)",
   "main": "server.js",
   "scripts": { "start": "node server.js" },
-  "dependencies": { "ws": "^8.18.0" },
-  "engines": { "node": ">=18" }
+  "dependencies": { "@supabase/supabase-js": "^2.45.4", "ws": "^8.18.0" },
+  "engines": { "node": ">=20" }
 }

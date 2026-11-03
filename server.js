@@ -16,6 +16,14 @@ var TURN_MS = Number(process.env.TURN_MS) || 30000; // 每手限時 30 秒
 var RESULT_MS = Number(process.env.RESULT_MS) || 10000; // 結算畫面停留後回到準備階段
 var NICK_MAX = 7;
 
+// Supabase（登入與遊戲幣）：金鑰放在 Render 的環境變數，沒設定就當作沒有登入功能
+var sb = null;
+if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  try {
+    sb = require('@supabase/supabase-js').createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  } catch (e) { console.log('supabase init failed', e.message); }
+}
+
 var server = http.createServer(function (req, res) {
   var u = req.url.split('?')[0];
   if (u === '/' || u === '/index.html') {
@@ -59,7 +67,36 @@ function nickTaken(n, except) {
   clients.forEach(function (c) { if (c !== except && c.nick && nickKey(c.nick) === k) hit = true; });
   return hit;
 }
+// 登入：驗證 token → 讀 profiles → 暱稱綁定帳號
+function onAuth(ws, m) {
+  if (!sb) { sendTo(ws, { t: 'auth', ok: false, r: 'off' }); return; }
+  if (typeof m.token !== 'string' || m.token.length > 4000) { sendTo(ws, { t: 'auth', ok: false, r: 'bad' }); return; }
+  if (ws.authBusy) return;
+  if (ws.seat >= 0) { sendTo(ws, { t: 'auth', ok: false, r: 'busy' }); return; }
+  ws.authBusy = true;
+  var uid = null;
+  sb.auth.getUser(m.token).then(function (r) {
+    if (!r.data || !r.data.user) throw 'bad';
+    uid = r.data.user.id;
+    return sb.from('profiles').select('nickname,coins').eq('id', uid).maybeSingle();
+  }).then(function (p) {
+    ws.authBusy = false;
+    if (ws.readyState !== 1) return;
+    if (!p.data) { sendTo(ws, { t: 'auth', ok: false, r: 'noprofile' }); return; }
+    if (ws.uid && ws.uid !== uid) { sendTo(ws, { t: 'auth', ok: false, r: 'bad' }); return; }
+    var n = p.data.nickname;
+    if (nickTaken(n, ws)) { sendTo(ws, { t: 'auth', ok: false, r: 'taken' }); return; }
+    ws.uid = uid; ws.coins = p.data.coins | 0; ws.nick = n;
+    sendTo(ws, { t: 'nick', ok: true, n: n });
+    sendTo(ws, { t: 'auth', ok: true, n: n, coins: ws.coins });
+    presenceOut(ws);
+  }).catch(function () {
+    ws.authBusy = false;
+    sendTo(ws, { t: 'auth', ok: false, r: 'bad' });
+  });
+}
 function onNick(ws, m) {
+  if (ws.uid) { sendTo(ws, { t: 'nick', ok: false, r: 'locked', n: ws.nick }); return; }
   var n = cleanNick(m.n);
   if (!n) { sendTo(ws, { t: 'nick', ok: false, r: 'invalid', n: ws.nick }); return; }
   if (ws.seat >= 0) T = TBL[ws.tb];
@@ -816,7 +853,7 @@ function validStrokes(d) {
 wss.on('connection', function (ws) {
   if (clients.size >= MAX_CLIENTS) { ws.close(1013, 'full'); return; }
   ws.id = crypto.randomBytes(4).toString('hex');
-  ws.nick = null; ws.presence = null; ws.seat = -1; ws.tb = -1; ws.toi = -1; ws.rr = -1; ws.hit = false; ws.slotAt = 0; ws.slotMs = 0; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
+  ws.uid = null; ws.coins = 0; ws.authBusy = false; ws.nick = null; ws.presence = null; ws.seat = -1; ws.tb = -1; ws.toi = -1; ws.rr = -1; ws.hit = false; ws.slotAt = 0; ws.slotMs = 0; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
   clients.add(ws);
   ws.on('pong', function () { ws.alive = true; });
   ws.on('error', function () {});
@@ -838,6 +875,7 @@ wss.on('connection', function (ws) {
     try { m = JSON.parse(data.toString()); } catch (e) { return; }
     if (!m || typeof m !== 'object') return;
     if (m.t === 'nick') onNick(ws, m);
+    else if (m.t === 'auth') onAuth(ws, m);
     else if (m.t === 'presence') {
       var p = cleanPresence(m.p);
       if (!p) return;
