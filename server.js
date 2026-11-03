@@ -33,7 +33,7 @@ var server = http.createServer(function (req, res) {
 
 var wss = new WebSocketServer({ server: server, path: '/ws', maxPayload: 400 * 1024 });
 var clients = new Set();
-var NWIN = 17; // 窗戶總數：東側 10 扇 + 走廊側 7 扇
+var NWIN = 34; // 窗戶總數：一樓 17 扇（東側 10 + 走廊側 7）＋ 二樓 17 扇
 var W = []; while (W.length < NWIN) W.push(0); // 窗戶開關（記憶體，重啟後全部關閉）
 var boards = [null, null, null]; // 三間教室各自的黑板快照（記憶體，重啟後清空）
 function roomIdx(v) { v = Number(v); return v === 1 || v === 2 ? v : 0; } // 黑板最新快照（記憶體，重啟後會清空）
@@ -62,6 +62,7 @@ function nickTaken(n, except) {
 function onNick(ws, m) {
   var n = cleanNick(m.n);
   if (!n) { sendTo(ws, { t: 'nick', ok: false, r: 'invalid', n: ws.nick }); return; }
+  if (ws.seat >= 0) T = TBL[ws.tb];
   if (ws.seat >= 0 && T.ph !== 'lobby') {
     sendTo(ws, ws.nick === n ? { t: 'nick', ok: true, n: n } : { t: 'nick', ok: false, r: 'busy', n: ws.nick });
     return;
@@ -87,7 +88,7 @@ function cleanPresence(p) {
 function pubPresence(ws) {
   var o = Object.assign({}, ws.presence);
   o.n = ws.nick;
-  o.g = ws.seat >= 0 ? ws.seat : -1;
+  o.g = ws.seat >= 0 ? ws.tb * 4 + ws.seat : -1;
   o.q = ws.toi >= 0 ? ws.toi : -1; // 馬桶座位同樣由伺服器決定 // 大老二座位由伺服器決定，不接受玩家自填
   return o;
 }
@@ -108,6 +109,7 @@ function classify(ids) {
   var c = ids.slice().sort(function (a, b) { return a - b; });
   if (n === 1) return { k: 'single', n: 1, g: 0, p: c[0] };
   if (n === 2) return rk(c[0]) === rk(c[1]) ? { k: 'pair', n: 2, g: 0, p: c[1] } : null;
+  if (n === 4) return (rk(c[0]) === rk(c[3])) ? { k: 'quad', n: 4, g: 0, p: rk(c[0]) } : null; // 鐵支：四張同點數，不帶牌
   if (n !== 5) return null;
   var cnt = {}, i;
   for (i = 0; i < 5; i++) cnt[rk(c[i])] = (cnt[rk(c[i])] || 0) + 1;
@@ -136,13 +138,21 @@ function classify(ids) {
 }
 function beats(a, b) {
   if (!b) return true;
+  // 四張鐵支可以壓過任何單張、對子、五張牌型（含「四條帶一張」），鐵支之間比點數；只有同花順比鐵支大
+  if (b.k === 'quad') return a.k === 'sflush' ? true : (a.k === 'quad' && a.p > b.p);
+  if (a.k === 'quad') return b.k !== 'sflush';
   if (a.n !== b.n) return false;
   if (a.n === 5) return a.g !== b.g ? a.g > b.g : a.p > b.p;
   return a.p > b.p;
 }
 
-var T = { ph: 'lobby', seats: [null, null, null, null], turn: -1, last: null, passed: {}, first: false, deadline: 0, res: null, m: '', paused: false, pauseLeft: 0 };
-var turnTimer = null, resetTimer = null;
+// 三間教室各一張牌桌（0＝101、1＝102、2＝103）。T 永遠指向「正在處理的那一桌」，每個入口（訊息、計時器、點名）都會先切換 T。
+function newTable(id) { return { id: id, ph: 'lobby', seats: [null, null, null, null], turn: -1, last: null, passed: {}, first: false, deadline: 0, res: null, m: '', paused: false, pauseLeft: 0, turnTimer: null, resetTimer: null }; }
+var TBL = [newTable(0), newTable(1), newTable(2)], T = TBL[0];
+function sendLabels(to) {
+  var m = { t: 'btl', n: TBL.map(function (x) { return x.seats.filter(Boolean).length; }), p: TBL.map(function (x) { return x.ph; }) };
+  if (to) sendTo(to, m); else sendAll(m);
+}
 
 function activeSeats() {
   var a = [];
@@ -160,7 +170,7 @@ function resetReady() { T.seats.forEach(function (s) { if (s) s.ready = false; }
 
 function pubState() {
   return {
-    t: 'bt', ph: T.ph,
+    t: 'bt', tb: T.id, ph: T.ph,
     seats: T.seats.map(function (s) { return s ? { n: s.nick, r: s.ready ? 1 : 0, c: s.hand.length, o: s.out ? 1 : 0 } : { n: null, r: 0, c: 0, o: 0 }; }),
     turn: T.turn,
     last: T.last ? { s: T.last.seat, c: T.last.c, k: T.last.combo.k } : null,
@@ -178,15 +188,17 @@ function btMsgFor(ws) {
   return o;
 }
 function broadcastBt() {
-  clients.forEach(function (c) { if (c.readyState === 1) c.send(JSON.stringify(btMsgFor(c))); });
+  var id = T.id;
+  clients.forEach(function (c) { if (c.readyState === 1 && c.seat >= 0 && c.tb === id) c.send(JSON.stringify(btMsgFor(c))); });
   T.m = '';
+  sendLabels();
 }
 
 function restartTimer() {
-  clearTimeout(turnTimer);
+  clearTimeout(T.turnTimer);
   if (T.paused) { T.pauseLeft = TURN_MS; return; } // 點名中：倒數暫停，結束後才開始算
   T.deadline = Date.now() + TURN_MS;
-  turnTimer = setTimeout(onTurnTimeout, TURN_MS);
+  var tbT = T; T.turnTimer = setTimeout(function () { T = tbT; onTurnTimeout(); }, TURN_MS);
 }
 // 一圈結束（其他人都 pass）就清掉桌面，由最後出牌的人（若已離開則是下一位）領出
 function normalize() {
@@ -202,7 +214,7 @@ function advance() {
   restartTimer();
 }
 function endGame(w) {
-  clearTimeout(turnTimer);
+  clearTimeout(T.turnTimer);
   T.paused = false;
   T.ph = 'ended';
   T.turn = -1;
@@ -212,12 +224,12 @@ function endGame(w) {
     c: T.seats.map(function (s) { return s ? s.hand.length : 0; }),
     o: T.seats.map(function (s) { return s && s.out ? 1 : 0; })
   };
-  clearTimeout(resetTimer);
-  resetTimer = setTimeout(resetLobby, RESULT_MS);
+  clearTimeout(T.resetTimer);
+  var tbR = T; T.resetTimer = setTimeout(function () { T = tbR; resetLobby(); }, RESULT_MS);
 }
 function resetLobby() {
-  clearTimeout(turnTimer);
-  clearTimeout(resetTimer);
+  clearTimeout(T.turnTimer);
+  clearTimeout(T.resetTimer);
   T.paused = false;
   T.seats = T.seats.map(function (s) {
     if (!s || s.out) return null;
@@ -236,25 +248,27 @@ function shuffled() {
   return d;
 }
 function startGame() {
-  var d = shuffled();
+  var d = shuffled(), seated = T.seats.filter(Boolean).length, per = Math.floor(52 / seated), dropped = 52 - per * seated, kk = 0;
+  if (dropped) d.splice(d.indexOf(0) === 51 ? 0 : 51, dropped); // 3 人時每人 17 張，剩的 1 張直接丟棄（梅花 3 一定留在手上）
   T.seats.forEach(function (s, i) {
-    s.hand = d.slice(i * 13, i * 13 + 13).sort(function (a, b) { return a - b; });
+    if (!s) return;
+    s.hand = d.slice(kk * per, kk * per + per).sort(function (a, b) { return a - b; }); kk++;
     s.ready = false; s.out = false;
   });
   T.ph = 'playing'; T.res = null; T.last = null; T.passed = {}; T.first = true;
   T.turn = 0;
-  T.seats.forEach(function (s, i) { if (s.hand.indexOf(0) >= 0) T.turn = i; });
-  T.m = '發牌完成，' + T.seats[T.turn].nick + ' 持有梅花 3，先出';
+  T.seats.forEach(function (s, i) { if (s && s.hand.indexOf(0) >= 0) T.turn = i; });
+  T.m = '發牌完成' + (dropped ? '（每人 ' + per + ' 張，剩 ' + dropped + ' 張已丟棄）' : '') + '，' + T.seats[T.turn].nick + ' 持有梅花 3，先出';
   T.paused = false;
   restartTimer();
-  if (R[0].st === 'call') pauseBt(); // 發牌時剛好在點名，倒數先暫停
+  if (R[T.id].st === 'call') pauseBt(); // 發牌時剛好在點名，倒數先暫停
 }
 // 點名時暫停大老二的出牌倒數（牌桌在 101 教室），點名結束後從剩下的時間繼續
 function pauseBt() {
   if (T.ph !== 'playing' || T.paused) return;
   T.paused = true;
   T.pauseLeft = Math.max(1000, T.deadline - Date.now());
-  clearTimeout(turnTimer);
+  clearTimeout(T.turnTimer);
   broadcastBt();
 }
 function resumeBt() {
@@ -262,8 +276,8 @@ function resumeBt() {
   T.paused = false;
   if (T.ph === 'playing') {
     T.deadline = Date.now() + T.pauseLeft;
-    clearTimeout(turnTimer);
-    turnTimer = setTimeout(onTurnTimeout, T.pauseLeft);
+    clearTimeout(T.turnTimer);
+    var tbP = T; T.turnTimer = setTimeout(function () { T = tbP; onTurnTimeout(); }, T.pauseLeft);
   }
   broadcastBt();
 }
@@ -316,7 +330,7 @@ function joinTable(ws) {
   var i = T.seats.indexOf(null);
   if (i < 0) return '牌桌已滿（4 人）';
   T.seats[i] = { ws: ws, nick: ws.nick, ready: false, hand: [], out: false };
-  ws.seat = i;
+  ws.seat = i; ws.tb = T.id;
   resetReady();
   presenceOut(ws);
   return null;
@@ -324,6 +338,7 @@ function joinTable(ws) {
 function leaveTable(ws) {
   var i = ws.seat;
   if (i == null || i < 0) return;
+  T = TBL[ws.tb];
   ws.seat = -1;
   var s = T.seats[i];
   if (T.ph === 'playing' && s) {
@@ -340,9 +355,13 @@ function leaveTable(ws) {
     resetReady();
   }
   presenceOut(ws);
+  sendTo(ws, btMsgFor(ws)); // 離開的人也要收到「你不在桌上了」
   broadcastBt();
 }
 function onBt(ws, m) {
+  if (m.a === 'join') { var ti = Math.floor(Number(m.tb)); if (!(ti >= 0 && ti < 3)) return; T = TBL[ti]; }
+  else if (ws.seat >= 0 && ws.tb >= 0) T = TBL[ws.tb];
+  else return;
   T.m = '';
   var err = null;
   if (m.a === 'join') err = joinTable(ws);
@@ -350,10 +369,10 @@ function onBt(ws, m) {
   else if (m.a === 'ready') {
     var s = ws.seat >= 0 ? T.seats[ws.seat] : null;
     if (!s || T.ph !== 'lobby') err = '現在不能準備';
-    else if (T.seats.some(function (x) { return !x; })) err = '要滿 4 人才能準備';
+    else if (T.seats.filter(Boolean).length < 3) err = '至少要 3 人才能準備';
     else {
       s.ready = !s.ready;
-      if (T.seats.every(function (x) { return x.ready; })) startGame();
+      if (T.seats.every(function (x) { return !x || x.ready; })) startGame();
     }
   }
   else if (m.a === 'play') err = doPlay(ws.seat, m.c);
@@ -497,6 +516,7 @@ function stepTeacher(t, dt, now) {
 var R = [0, 1, 2].map(function (i) { return { i: i, n: -1, st: 'wait', list: [], names: [], k: 0, slot: 0, callStart: 0, rollEnd: 0, j: -1, base: 0, q1: false, q2: false, endSaid: false }; });
 var CURQ = [null, null, null], QSEQ = 0;
 
+var KZ = [-4, 10, 24]; // 被請出教室後落腳的位置：各教室門外的走廊
 function inRoom(p, i) { return p.y < 2.5 && p.x >= -8 && p.x <= 8 && p.z >= RZ[i][0] && p.z <= RZ[i][1]; }
 function sendAll(o) {
   var s = JSON.stringify(o);
@@ -513,7 +533,7 @@ function startRoll(r, T0, base) {
   r.st = 'call';
   tSay(T0, '現在開始點名', 1500);
   list.forEach(function (c, idx) { c.rr = r.i; c.hit = false; c.slotAt = 0; c.slotMs = 0; sendTo(c, { t: 'roll', a: 'start', r: r.i, k: r.k, i: idx + 1 }); });
-  if (r.i === 0) pauseBt();
+  T = TBL[r.i]; pauseBt();
 }
 function callOne(r, T0, j) {
   var c = r.list[j];
@@ -527,12 +547,14 @@ function endRoll(r, T0) {
   var pres = [];
   r.list.forEach(function (c, j) { if (c.hit) pres.push(r.names[j]); });
   r.list.forEach(function (c) {
+    var out = !c.hit && c.readyState === 1 && c.rr === r.i && c.presence && inRoom(c.presence, r.i); // 點名時在教室、卻沒回應「到」
     if (c.readyState === 1 && c.rr === r.i) sendTo(c, { t: 'roll', a: 'end', p: pres, k: r.k, me: c.hit ? 1 : 0 });
+    if (out) { sendTo(c, { t: 'roll', a: 'kick', r: r.i }); c.presence.x = -9.5; c.presence.z = KZ[r.i]; c.presence.y = 0; }
     if (c.rr === r.i) { c.rr = -1; c.hit = false; c.slotAt = 0; }
   });
   r.st = 'done';
   tSay(T0, '出席 ' + pres.length + ' 人', 3000);
-  if (r.i === 0) resumeBt();
+  T = TBL[r.i]; resumeBt();
 }
 // 只有「被叫到的那幾秒」按才算（前 0.15 秒、後 0.7 秒是網路延遲的緩衝）
 function onHere(ws) {
@@ -643,25 +665,97 @@ function onToi(ws, m) {
     sendAll({ t: 'flush', i: i }); toiAll();
   }
 }
-var J = { x: -6.5, z: -18, f: 0, st: 0, at: 'ti', path: [], dest: 'ti', off: false, zone: '', say: '', sayUntil: 0, tgt: null, remind: 0 };
+// 清潔工走遍整個學校：一、二樓、樓梯、走廊、操場都能去。用格子地圖找路（0.5 公尺一格），上下樓走樓梯。
+var J = { x: -6.5, z: -18, y: 0, f: 0, st: 0, path: [], gx: 0, gz: 0, replanAt: 0, say: '', sayUntil: 0, tgt: null, remind: 0 };
 function janMsg() {
-  return { t: 'jan', x: Math.round(J.x * 100) / 100, z: Math.round(J.z * 100) / 100, f: Math.round(J.f * 100) / 100, s: J.st, b: Date.now() < J.sayUntil ? J.say : '' };
+  return { t: 'jan', x: Math.round(J.x * 100) / 100, z: Math.round(J.z * 100) / 100, y: Math.round(J.y * 100) / 100, f: Math.round(J.f * 100) / 100, s: J.st, b: Date.now() < J.sayUntil ? J.say : '' };
 }
-function corrNode(z) {
-  var b = 'ro0', bd = 1e9;
-  ['to', 'oo', 'ro0', 'ro1', 'ro2', 'ro3'].forEach(function (k) { var d = Math.abs(TN[k].z - z); if (d < bd) { bd = d; b = k; } });
-  return b;
-}
-// 目標所在的區域：能直線走過去的（走廊、廁所、辦公室、教室）給入口節點；其他地方只能走到最近的走廊節點
-function zoneOf(p) {
-  if (p.y > 2.6) return { k: 'x', e: 'ro3', free: false };
-  if (p.x > -11 && p.x < -8) return { k: 'S', e: corrNode(p.z), free: true };
-  if (p.x >= -8 && p.x <= 8) {
-    if (p.z >= -21 && p.z < -15) return { k: 'ti', e: 'ti', free: true };
-    if (p.z >= -15 && p.z < -7) return { k: 'oi', e: 'oi', free: true };
-    for (var i = 0; i < 3; i++) if (p.z >= RZ[i][0] && p.z <= RZ[i][1]) return { k: 'ri' + i, e: 'ri' + i, free: true };
+var NG = { s: 0.5, x0: -40, z0: -40, nx: 172, nz: 220 }, FH = 4.2;
+var DOORZ = [-18, -11, -4, 5, 10, 19, 24, 33, 38], EG0 = -21 + 62 / 15 * 7, EG1 = -21 + 62 / 15 * 8;
+function wallBlk(fl, x, z) {
+  if (!(x > -11.3 && x < 8.3 && z > -21.3 && z < 41.3)) return fl === 1;      // 一樓戶外可走；二樓建築外是空的
+  if (Math.abs(z + 21) < 0.3 || Math.abs(z - 41) < 0.3 || Math.abs(x - 8) < 0.3) return true;
+  if (Math.abs(x + 8) < 0.3) {                                                   // 教室、廁所、辦公室、樓梯間的門洞
+    for (var i = 0; i < DOORZ.length; i++) { if (fl === 1 && DOORZ[i] === -18) continue; if (Math.abs(z - DOORZ[i]) < 1.0) return false; }
+    return true;
   }
-  return { k: 'x', e: corrNode(p.z), free: false };
+  if (Math.abs(x + 11) < 0.3) return !(fl === 0 && z > EG0 && z < EG1);          // 走廊欄杆，只有一樓正門口能進出
+  if (x > -8 && x < 8) { var P = [-7, 7, 21, 35]; if (fl === 0) P.push(-15); for (var k = 0; k < P.length; k++) if (Math.abs(z - P[k]) < 0.3) return true; }
+  if (fl === 0) { if (x > 0 && x < 3.5 && z > 36.5 && z < 40.6) return true; if (x > -3.5 && x <= 0 && z > 38.6 && z < 40.6) return true; }
+  else if (x > -3.5 && x < 3.5 && z > 36.5 && z < 40.6) return true;
+  return false;
+}
+var BLK = [0, 1].map(function (fl) {
+  var a = new Uint8Array(NG.nx * NG.nz);
+  for (var cz = 0; cz < NG.nz; cz++) for (var cx = 0; cx < NG.nx; cx++) a[cz * NG.nx + cx] = wallBlk(fl, NG.x0 + (cx + 0.5) * NG.s, NG.z0 + (cz + 0.5) * NG.s) ? 1 : 0;
+  return a;
+});
+function cellX(x) { return Math.floor((x - NG.x0) / NG.s); }
+function cellZ(z) { return Math.floor((z - NG.z0) / NG.s); }
+function blkAt(fl, x, z) { var cx = cellX(x), cz = cellZ(z); if (cx < 0 || cz < 0 || cx >= NG.nx || cz >= NG.nz) return true; return BLK[fl][cz * NG.nx + cx] === 1; }
+function nearFree(fl, x, z) {
+  if (!blkAt(fl, x, z)) return { x: x, z: z };
+  for (var r = 1; r <= 8; r++) for (var a = -r; a <= r; a++) for (var b = -r; b <= r; b++) {
+    if (Math.max(Math.abs(a), Math.abs(b)) !== r) continue;
+    var px = x + a * NG.s, pz = z + b * NG.s;
+    if (!blkAt(fl, px, pz)) return { x: px, z: pz };
+  }
+  return null;
+}
+function los(fl, x0, z0, x1, z1) {
+  var d = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(d / 0.25);
+  for (var i = 1; i < n; i++) if (blkAt(fl, x0 + (x1 - x0) * i / n, z0 + (z1 - z0) * i / n)) return false;
+  return true;
+}
+function astar(fl, sx, sz, gx, gz) {
+  var s = nearFree(fl, sx, sz), g = nearFree(fl, gx, gz);
+  if (!s || !g) return null;
+  var nx = NG.nx, N = nx * NG.nz, B = BLK[fl];
+  var si = cellZ(s.z) * nx + cellX(s.x), gi = cellZ(g.z) * nx + cellX(g.x), gx0 = cellX(g.x), gz0 = cellZ(g.z);
+  var gs = new Float32Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N), fs = new Float32Array(N);
+  var heap = [];
+  function hp(i) { var cx = i % nx, cz = (i - cx) / nx, dx = Math.abs(cx - gx0), dz = Math.abs(cz - gz0); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); }
+  function push(i) { heap.push(i); var k = heap.length - 1; while (k > 0) { var p = (k - 1) >> 1; if (fs[heap[p]] <= fs[heap[k]]) break; var t = heap[p]; heap[p] = heap[k]; heap[k] = t; k = p; } }
+  function pop() { var top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; var k = 0; for (;;) { var l = 2 * k + 1, r = l + 1, m = k; if (l < heap.length && fs[heap[l]] < fs[heap[m]]) m = l; if (r < heap.length && fs[heap[r]] < fs[heap[m]]) m = r; if (m === k) break; var t = heap[m]; heap[m] = heap[k]; heap[k] = t; k = m; } } return top; }
+  gs[si] = 0; fs[si] = hp(si); push(si);
+  var D = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]], found = false;
+  while (heap.length) {
+    var cur = pop();
+    if (closed[cur]) continue;
+    closed[cur] = 1;
+    if (cur === gi) { found = true; break; }
+    var cx = cur % nx, cz = (cur - cx) / nx;
+    for (var d = 0; d < 8; d++) {
+      var ax = cx + D[d][0], az = cz + D[d][1];
+      if (ax < 0 || az < 0 || ax >= nx || az >= NG.nz) continue;
+      var ni = az * nx + ax;
+      if (B[ni] || closed[ni]) continue;
+      if (D[d][0] && D[d][1] && (B[cz * nx + ax] || B[az * nx + cx])) continue; // 不斜切牆角
+      var ng = gs[cur] + D[d][2];
+      if (ng < gs[ni]) { gs[ni] = ng; came[ni] = cur; fs[ni] = ng + hp(ni); push(ni); }
+    }
+  }
+  if (!found) return null;
+  var pts = [], c = gi;
+  while (c !== -1) { var px = c % nx; pts.push({ x: NG.x0 + (px + 0.5) * NG.s, z: NG.z0 + ((c - px) / nx + 0.5) * NG.s }); c = came[c]; }
+  pts.reverse(); pts[0] = { x: s.x, z: s.z }; pts[pts.length - 1] = { x: g.x, z: g.z };
+  var out = [], i = 0;
+  while (i < pts.length - 1) { var j = pts.length - 1; while (j > i + 1 && !los(fl, pts[i].x, pts[i].z, pts[j].x, pts[j].z)) j--; out.push({ x: pts[j].x, z: pts[j].z, y: fl * FH }); i = j; }
+  return out;
+}
+var ST_UP = [{ x: -6.5, z: 37.5, y: 0 }, { x: 0, z: 37.5, y: 2.1 }, { x: 3, z: 38.5, y: 2.1 }, { x: 3, z: 39.6, y: 2.1 }, { x: -3.5, z: 39.6, y: 4.2 }, { x: -5.5, z: 39.8, y: 4.2 }];
+function stw(q) { return { x: q.x, z: q.z, y: q.y, st: true }; }
+function janPlan(fx, fz, ffl, tx, tz, tfl) {
+  var a, b;
+  if (ffl === tfl) return astar(ffl, fx, fz, tx, tz) || [];
+  if (ffl === 0) {
+    a = astar(0, fx, fz, ST_UP[0].x, ST_UP[0].z); b = astar(1, ST_UP[5].x, ST_UP[5].z, tx, tz);
+    if (!a || !b) return [];
+    return a.concat(ST_UP.slice(1).map(stw), b);
+  }
+  a = astar(1, fx, fz, ST_UP[5].x, ST_UP[5].z); b = astar(0, ST_UP[0].x, ST_UP[0].z, tx, tz);
+  if (!a || !b) return [];
+  return a.concat(ST_UP.slice(0, 5).reverse().map(stw), b);
 }
 function pickTarget(now) {
   var b = null;
@@ -670,39 +764,34 @@ function pickTarget(now) {
   });
   return b;
 }
-function jmove(tx, tz, dt) {
-  var dx = tx - J.x, dz = tz - J.z, d = Math.hypot(dx, dz), st = JANV * dt / 1000;
-  if (d <= 0.001) return true;
-  var s = Math.min(st, d);
-  J.x += dx / d * s; J.z += dz / d * s; J.f = Math.atan2(dx, dz); J.st = 1;
-  return false;
+function jstep(dt) {
+  var wp = J.path[0];
+  if (!wp) return;
+  var dx = wp.x - J.x, dz = wp.z - J.z, d = Math.hypot(dx, dz), sp = JANV * dt / 1000;
+  if (d <= sp) { J.x = wp.x; J.z = wp.z; J.y = wp.y; J.path.shift(); if (d > 0.01) { J.f = Math.atan2(dx, dz); J.st = 1; } return; }
+  var fr = sp / d;
+  J.x += dx * fr; J.z += dz * fr; J.y += (wp.y - J.y) * fr; J.f = Math.atan2(dx, dz); J.st = 1;
 }
 function janStep(dt, now) {
   J.st = 0;
-  var tg = pickTarget(now), zn = null, dest = 'ti';
+  var tg = pickTarget(now), gx = -6.5, gz = -18, gfl = 0, pr = null;
   if (tg) {
-    zn = zoneOf(tg.by.presence); dest = zn.e;
+    pr = tg.by.presence; gfl = pr.y >= 3.2 ? 1 : 0; gx = pr.x; gz = pr.z;
+    var offs = [[-1.1, 0], [1.1, 0], [0, -1.1], [0, 1.1]];
+    for (var k = 0; k < offs.length; k++) if (!blkAt(gfl, pr.x + offs[k][0], pr.z + offs[k][1])) { gx = pr.x + offs[k][0]; gz = pr.z + offs[k][1]; break; }
     if (J.tgt !== tg.by) { J.tgt = tg.by; J.say = tg.by.nick + '，請沖水！'; J.sayUntil = now + 4000; J.remind = now + 8000; }
     else if (now > J.remind) { J.say = '請沖水！'; J.sayUntil = now + 2500; J.remind = now + 8000; }
   } else J.tgt = null;
-  if (J.off) {
-    if (tg && zn.free && zn.k === J.zone) {
-      var pr = tg.by.presence, gx = pr.x - 1.1, gz = pr.z;
-      if (Math.hypot(gx - J.x, gz - J.z) > 0.4) jmove(gx, gz, dt);
-      else J.f = Math.atan2(pr.x - J.x, pr.z - J.z);
+  var curFl = J.y >= 2.1 ? 1 : 0, locked = J.path.length && J.path[0].st;
+  if (!locked) {
+    if (curFl === gfl && Math.hypot(gx - J.x, gz - J.z) < (tg ? 0.4 : 0.15)) {
+      J.path = [];
+      J.f = tg ? Math.atan2(pr.x - J.x, pr.z - J.z) : 0;
       return;
     }
-    var n = TN[J.at];
-    if (jmove(n.x, n.z, dt)) J.off = false;
-    return;
+    if (now >= J.replanAt || Math.hypot(gx - J.gx, gz - J.gz) > 1.0) { J.path = janPlan(J.x, J.z, curFl, gx, gz, gfl); J.gx = gx; J.gz = gz; J.replanAt = now + 500; }
   }
-  if (J.at !== dest) {
-    if (J.dest !== dest || !J.path.length) { J.dest = dest; J.path = plan(J.at, dest); }
-    if (J.path.length) { var n2 = TN[J.path[0]]; if (jmove(n2.x, n2.z, dt)) J.at = J.path.shift(); }
-    return;
-  }
-  if (tg && zn.free) { J.off = true; J.zone = zn.k; return; }
-  if (!tg) J.f = 0;
+  jstep(dt);
 }
 
 // ───────── 連線 ─────────
@@ -727,15 +816,15 @@ function validStrokes(d) {
 wss.on('connection', function (ws) {
   if (clients.size >= MAX_CLIENTS) { ws.close(1013, 'full'); return; }
   ws.id = crypto.randomBytes(4).toString('hex');
-  ws.nick = null; ws.presence = null; ws.seat = -1; ws.toi = -1; ws.rr = -1; ws.hit = false; ws.slotAt = 0; ws.slotMs = 0; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
+  ws.nick = null; ws.presence = null; ws.seat = -1; ws.tb = -1; ws.toi = -1; ws.rr = -1; ws.hit = false; ws.slotAt = 0; ws.slotMs = 0; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
   clients.add(ws);
   ws.on('pong', function () { ws.alive = true; });
   ws.on('error', function () {});
 
   var peers = [];
   clients.forEach(function (c) { if (c !== ws && c.nick && c.presence) peers.push({ peer: c.id, presence: pubPresence(c) }); });
-  sendTo(ws, { t: 'hello', id: ws.id, peers: peers, boards: boards });
-  sendTo(ws, btMsgFor(ws));
+  sendTo(ws, { t: 'hello', v: '1.6', id: ws.id, peers: peers, boards: boards });
+  sendLabels(ws);
   sendTo(ws, { t: 'win', w: W });
   sendTo(ws, { t: 'tinfo', ts: TCH.map(function (t) { return { n: t.name, s: t.subj, c: t.color }; }) });
   sendTo(ws, { t: 'tch', now: Date.now(), ts: lastArr });
