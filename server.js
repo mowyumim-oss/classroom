@@ -262,6 +262,31 @@ function advance() {
   normalize();
   restartTimer();
 }
+// 大老二獎勵：第 1 名 5 幣、第 2 名 3 幣、第 3 名 1 幣、最後 0 幣
+// 依剩下的牌數排名（越少越前面）；同張數並列同名次；中途離開的人一律排最後
+var COIN_BY_RANK = [5, 3, 1, 0];
+function addCoins(ws, n) {
+  if (!sb || !ws || !ws.uid || n <= 0) return;
+  sb.from('profiles').update({ coins: (ws.coins | 0) + n }).eq('id', ws.uid).select('coins').single().then(function (r) {
+    if (r.error || !r.data) { console.log('coin update failed:', r.error ? r.error.message : 'no data'); return; }
+    ws.coins = r.data.coins;
+    sendTo(ws, { t: 'auth', ok: true, n: ws.nick, coins: ws.coins });
+  });
+}
+function payCoins(tb) {
+  var g = [0, 0, 0, 0], w = tb.res.w, ws0 = tb.seats[w];
+  if (!ws0 || ws0.out || ws0.hand.length !== 0) return g; // 其他人都離開才「獲勝」的不算，避免用分身刷幣
+  var list = [];
+  tb.seats.forEach(function (s, i) { if (s && !s.out) list.push({ i: i, c: s.hand.length }); });
+  list.sort(function (a, b) { return a.c - b.c; });
+  list.forEach(function (e, k) {
+    var rank = (k > 0 && list[k - 1].c === e.c) ? list[k - 1].rank : k;
+    e.rank = rank;
+    var s = tb.seats[e.i];
+    if (s.ws && s.ws.uid) { g[e.i] = COIN_BY_RANK[Math.min(rank, 3)]; addCoins(s.ws, g[e.i]); }
+  });
+  return g;
+}
 function endGame(w) {
   clearTimeout(T.turnTimer);
   T.paused = false;
@@ -273,6 +298,7 @@ function endGame(w) {
     c: T.seats.map(function (s) { return s ? s.hand.length : 0; }),
     o: T.seats.map(function (s) { return s && s.out ? 1 : 0; })
   };
+  T.res.g = payCoins(T);
   clearTimeout(T.resetTimer);
   var tbR = T; T.resetTimer = setTimeout(function () { T = tbR; resetLobby(); }, RESULT_MS);
 }
