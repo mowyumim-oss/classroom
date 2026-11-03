@@ -67,32 +67,44 @@ function nickTaken(n, except) {
   clients.forEach(function (c) { if (c !== except && c.nick && nickKey(c.nick) === k) hit = true; });
   return hit;
 }
-// 登入：驗證 token → 讀 profiles → 暱稱綁定帳號
+// 登入：驗證 token → 讀 profiles（沒有就自動補建）→ 暱稱綁定帳號
 function onAuth(ws, m) {
   if (!sb) { sendTo(ws, { t: 'auth', ok: false, r: 'off' }); return; }
   if (typeof m.token !== 'string' || m.token.length > 4000) { sendTo(ws, { t: 'auth', ok: false, r: 'bad' }); return; }
   if (ws.authBusy) return;
   if (ws.seat >= 0) { sendTo(ws, { t: 'auth', ok: false, r: 'busy' }); return; }
   ws.authBusy = true;
-  var uid = null;
+  var user = null;
   sb.auth.getUser(m.token).then(function (r) {
     if (!r.data || !r.data.user) throw 'bad';
-    uid = r.data.user.id;
-    return sb.from('profiles').select('nickname,coins').eq('id', uid).maybeSingle();
+    user = r.data.user;
+    return sb.from('profiles').select('nickname,coins').eq('id', user.id).maybeSingle();
   }).then(function (p) {
+    if (p.error) { console.log('profile read failed:', p.error.message); throw 'dberr'; }
+    if (p.data) return p.data;
+    // 註冊時資料表還沒建好的帳號：用註冊時的暱稱補建（暱稱必須和帳號 email 對得上）
+    var nick = cleanNick(user.user_metadata && user.user_metadata.nickname);
+    var local = String(user.email || '').split('@')[0];
+    if (!nick || local !== 'u' + Buffer.from(nickKey(nick), 'utf8').toString('hex')) return null;
+    return sb.from('profiles').insert({ id: user.id, nickname: nick }).select('nickname,coins').single().then(function (q) {
+      if (q.error) { console.log('profile insert failed:', q.error.message); throw 'dberr'; }
+      return q.data;
+    });
+  }).then(function (row) {
     ws.authBusy = false;
     if (ws.readyState !== 1) return;
-    if (!p.data) { sendTo(ws, { t: 'auth', ok: false, r: 'noprofile' }); return; }
-    if (ws.uid && ws.uid !== uid) { sendTo(ws, { t: 'auth', ok: false, r: 'bad' }); return; }
-    var n = p.data.nickname;
+    if (!row) { sendTo(ws, { t: 'auth', ok: false, r: 'noprofile' }); return; }
+    if (ws.uid && ws.uid !== user.id) { sendTo(ws, { t: 'auth', ok: false, r: 'bad' }); return; }
+    var n = row.nickname;
     if (nickTaken(n, ws)) { sendTo(ws, { t: 'auth', ok: false, r: 'taken' }); return; }
-    ws.uid = uid; ws.coins = p.data.coins | 0; ws.nick = n;
+    ws.uid = user.id; ws.coins = row.coins | 0; ws.nick = n;
     sendTo(ws, { t: 'nick', ok: true, n: n });
     sendTo(ws, { t: 'auth', ok: true, n: n, coins: ws.coins });
     presenceOut(ws);
-  }).catch(function () {
+  }).catch(function (e) {
     ws.authBusy = false;
-    sendTo(ws, { t: 'auth', ok: false, r: 'bad' });
+    console.log('auth failed:', e && e.message ? e.message : e);
+    sendTo(ws, { t: 'auth', ok: false, r: e === 'dberr' ? 'dberr' : 'bad' });
   });
 }
 function onNick(ws, m) {

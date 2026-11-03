@@ -810,7 +810,7 @@ var SB_URL='https://kfaxtjppckwavuupcpst.supabase.co',SB_KEY='sb_publishable_AH8
 var sbc=null,myCoins=null,isAcct=false,pw=document.getElementById('pwin'),lb=document.getElementById('loginbtn'),rb=document.getElementById('regbtn');
 try{sbc=supabase.createClient(SB_URL,SB_KEY);}catch(e){}
 function fakeEmail(n){var b=new TextEncoder().encode(n.normalize('NFKC').toLowerCase()),s='u';b.forEach(function(x){s+=('0'+x.toString(16)).slice(-2);});return s+'@classroom-bw2t.onrender.com';}
-var AUTH_ERR={taken:'這個帳號已經在線上了',busy:'牌局中不能登入',bad:'登入失效，請重新登入',off:'登入功能尚未啟用',noprofile:'找不到帳號資料，請聯絡管理員'};
+var AUTH_ERR={taken:'這個帳號已經在線上了',busy:'牌局中不能登入',bad:'登入失效，請重新登入',off:'登入功能尚未啟用',noprofile:'找不到帳號資料，請聯絡管理員',dberr:'讀取玩家資料失敗（資料庫設定有問題），請看 Render Logs'};
 function setBusy(b){lb.disabled=b;rb.disabled=b;nb.disabled=b;}
 function acctMsg(e){var s=String(e&&e.message||'');
   if(/already registered|already been registered/i.test(s))return '這個暱稱已經被註冊了，請換一個或直接登入';
