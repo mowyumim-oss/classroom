@@ -1195,7 +1195,7 @@ function cabOrder(x, z, fl) {
 }
 function startChase(t, ws, now) {
   var p = ws.presence || { x: t.x, z: t.z, y: 0 };
-  t.chase = { ws: ws, end: now + TC.chaseMs, mode: 'last', last: { x: p.x, z: p.z, fl: p.y >= 3.2 ? 1 : 0 }, roll: now + TC.hideRollMs, order: [], si: 0, sUntil: 0, replanAt: 0, gx: 0, gz: 0 };
+  t.chase = { ws: ws, end: now + TC.chaseMs, mode: 'last', last: { x: p.x, z: p.z, fl: p.y >= 3.2 ? 1 : 0 }, pingAt: now + TC.pingEveryMs, pingUntil: 0, roll: now + TC.hideRollMs, order: [], si: 0, sUntil: 0, replanAt: 0, gx: 0, gz: 0 };
   t.path = []; t.cp = []; t.y = 0; t.st = 1;
   tSay(t, '站住！', 2500);
   sendTo(ws, { t: 'ch', a: 'go', ms: TC.chaseMs });
@@ -1205,11 +1205,16 @@ function chaseTick(t, dt, now) {
   if (!p || ws.readyState !== 1) { chaseEnd(t, 'dc', now); return; }
   if (now >= c.end) { chaseEnd(t, 'esc', now); return; }
   var tfl = t.y >= 2.1 ? 1 : 0, pfl = p.y >= 3.2 ? 1 : 0, hid = ws.hide >= 0, d = Math.hypot(p.x - t.x, p.z - t.z);
-  var see = !hid && pfl === tfl && d <= TC.sight && los(tfl, t.x, t.z, p.x, p.z);
+  if (now >= c.pingAt) { // 位置感應：每 pingEveryMs 開始一次，持續 pingMs
+    c.pingAt = now + TC.pingEveryMs; c.pingUntil = now + TC.pingMs;
+    sendTo(ws, { t: 'ch', a: 'ping', ms: TC.pingMs }); tSay(t, '我知道你在哪！', 2000);
+  }
+  var ping = now < c.pingUntil && (TC.pingHide || !hid); // 感應中：不看牆壁、距離、樓層，直接知道你的位置
+  var see = ping || (!hid && pfl === tfl && d <= TC.sight && los(tfl, t.x, t.z, p.x, p.z));
   if (see) {
     if (c.mode !== 'see') { c.mode = 'see'; sendTo(ws, { t: 'ch', a: 'chase', ms: c.end - now }); }
     c.last = { x: p.x, z: p.z, fl: pfl };
-    if (d < TC.catchDist) { chaseEnd(t, 'caught', now); return; }
+    if (d < TC.catchDist && pfl === tfl) { chaseEnd(t, 'caught', now); return; }
   } else if (c.mode === 'see') c.mode = 'last';
   if (hid && pfl === tfl && d <= TC.hideFar && now >= c.roll) { // 躲著：離得越近越容易被發現，機率最低 5%
     c.roll = now + TC.hideRollMs;
@@ -1238,7 +1243,7 @@ function chaseTick(t, dt, now) {
       return;
     }
   }
-  var locked = t.cp.length && t.cp[0].st;
+  var locked = t.cp.length && (t.cp[0].st || t.cp[0].v); // 樓梯與翻窗進行到一半時不重新規劃，否則會被拉回窗戶邊來回抖動
   if (!locked && (now >= c.replanAt || Math.hypot(gx - c.gx, gz - c.gz) > 1.0)) { t.cp = chasePlan(t, gx, gz, gfl); c.gx = gx; c.gz = gz; c.replanAt = now + 500; }
   cmove(t, dt);
 }

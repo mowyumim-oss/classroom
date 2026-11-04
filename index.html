@@ -1852,7 +1852,7 @@ function updTeachers(dt){
   });
 }
 // ───────── 與老師對話 ─────────
-var hiding=-1,svcLock=false,svcOn=false,svcEnd=0,svcTxt='',chEnd=0,chTxt='',trashM={},selfSign=null;
+var hiding=-1,svcLock=false,svcOn=false,svcEnd=0,svcTxt='',chEnd=0,chTxt='',pingEnd=0,trashM={},selfSign=null;
 var tkI=-1,tkMc=-1,tkLine='',tkEl=document.createElement('div'),tkBn=document.createElement('div'),rbEnd=0,rbTm=0;
 tkEl.id='tkwin';tkEl.className='box';tkBn.id='tkbn';tkBn.className='box';document.body.appendChild(tkEl);document.body.appendChild(tkBn);
 var TKERR={guest:'登入帳號才能借錢、搶錢',off:'這個功能還沒啟用（管理員需要先更新資料庫）',far:'離老師太遠了',class:'老師現在不能說話',asleep:'老師睡著了',awake:'老師醒著，不能搶錢',done:'今天已經向這位老師借過了，明天再來',limit:'搶太多次了，過一陣子再來',robbed:'這位老師已經被搶過了',busy:'操作太快了，等一下再試',dberr:'儲存失敗，什麼都沒有改變，請再試一次',svc:'愛校服務中不能這樣做',hide:'躲著的時候不能這樣做'};
@@ -1885,6 +1885,7 @@ function rbShow(){
   var now=performance.now(),txt='',bg='#c62828';
   if(svcOn){txt=svcTxt;bg='#6a4c93';if(svcEnd>now)txt+='　'+Math.ceil((svcEnd-now)/1000)+' 秒';}
   else if(chEnd>now)txt=chTxt+'（剩 '+Math.ceil((chEnd-now)/1000)+' 秒）';
+  if(!svcOn&&chEnd>now&&pingEnd>now)txt='👁️ 老師知道你在哪！（'+Math.ceil((pingEnd-now)/1000)+' 秒）';
   else if(rbEnd>now)txt='⚠️ '+Math.ceil((rbEnd-now)/1000)+' 秒後老師醒來！快逃！';
   if(!txt){clearInterval(rbTm);rbTm=0;tkBn.style.display='none';return;}
   tkBn.textContent=txt;tkBn.style.background=bg;tkBn.style.display='block';
@@ -1919,8 +1920,9 @@ net.onX(function(m){
     }else if(m.a==='out'&&hiding>=0){hiding=-1;player.visible=true;}
   }else if(m.t==='ch'){
     if(m.a==='go'||m.a==='chase'){chTxt='老師追來了！躲進櫃子（E）／從窗戶跳下去逃跑';chEnd=performance.now()+m.ms;rbEnd=0;rbShow();}
+    else if(m.a==='ping'){pingEnd=performance.now()+m.ms;rbShow();}
     else if(m.a==='search'){chTxt='老師在搜櫃子了！快換地方';chEnd=performance.now()+m.ms;rbShow();}
-    else if(m.a==='esc'){chEnd=0;rbShow();say('🎉 逃脫成功！那 25 金幣是你的了');beep([523,659,784,1047],0.2,'triangle');}
+    else if(m.a==='esc'){chEnd=0;rbShow();say('🎉 逃脫成功！搶來的金幣是你的了');beep([523,659,784,1047],0.2,'triangle');}
   }else if(m.t==='svc'){
     if(m.a==='start'){
       chEnd=0;rbEnd=0;svcOn=true;svcLock=true;svcTxt='愛校服務中…';svcEnd=performance.now()+m.ms+1000;
