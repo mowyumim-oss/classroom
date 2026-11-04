@@ -348,12 +348,6 @@ function groundAt(x,z,f){
 box(16,0.25,2.2,0x8d6e63,0,0.125,-5.9);
 box(2.2,0.9,0.9,0xa87c52,4.5,0.7,-5.9);solid(3.4,5.6,-6.35,-5.45);
 box(0.3,0.05,0.22,0xc0392b,4.0,1.17,-5.9);box(0.18,0.2,0.18,0xeeeeee,5.1,1.25,-5.8);
-// 六個長條櫃（每間教室後方一個，一樓 0～2、二樓 3～5）：可以躲進去，位置要和 tconfig.js 的 cabs 一致
-var cabK=[];
-[0,1].forEach(function(f){[0,1,2].forEach(function(i){var k=f*3+i,oy=f?H:0,cz=6.65+14*i;
-  var cm=box(3,2,0.6,0x7b8a96,-4,1+oy,cz);var sl=solid(-5.5,-2.5,cz-0.3,cz+0.3);if(f){sl.w=1;sl.mn=3;}
-  box(0.04,1.8,0.02,0x55616c,-4,1+oy,cz-0.31);box(0.1,0.04,0.04,0xdddddd,-4.15,1.05+oy,cz-0.33);box(0.1,0.04,0.04,0xdddddd,-3.85,1.05+oy,cz-0.33);
-  cm.userData={kind:'cab',ref:k};pickables.push(cm);cabK.push({k:k,x:-4,z:5.8+14*i,fl:f});});});
 pl(3,1.4,3,2.1,6.97,Math.PI,0xb98a5a);
 
 // clock
@@ -373,6 +367,12 @@ clock.position.set(0,3.72,-6.95);clock.userData={kind:'clock'};scene.add(clock);
 // blackboards: one per classroom (0,1,2), content saved separately on the server
 var BW=1600,BHc=440,BG='#2d4a3e',BZS=[-7,7,21],TXT=['歡迎來到教室','第二間教室','第三間教室'];
 var boards=[],erasers=[],pickables=[clock],chairs=[],doors=[],curR=0,bc,bx,btex;
+// 六個長條櫃（每間教室後方一個，一樓 0～2、二樓 3～5）：可以躲進去，位置要和 tconfig.js 的 cabs 一致
+var cabK=[];
+[0,1].forEach(function(f){[0,1,2].forEach(function(i){var k=f*3+i,oy=f?H:0,cz=6.65+14*i;
+  var cm=box(3,2,0.6,0x7b8a96,-4,1+oy,cz);var sl=solid(-5.5,-2.5,cz-0.3,cz+0.3);if(f){sl.w=1;sl.mn=3;}
+  box(0.04,1.8,0.02,0x55616c,-4,1+oy,cz-0.31);box(0.1,0.04,0.04,0xdddddd,-4.15,1.05+oy,cz-0.33);box(0.1,0.04,0.04,0xdddddd,-3.85,1.05+oy,cz-0.33);
+  cm.userData={kind:'cab',ref:k};pickables.push(cm);cabK.push({k:k,x:-4,z:5.8+14*i,fl:f});});});
 BZS.forEach(function(zn,i){
   var c=document.createElement('canvas');c.width=BW;c.height=BHc;var x=c.getContext('2d');
   x.fillStyle=BG;x.fillRect(0,0,BW,BHc);x.fillStyle='#fff';x.textBaseline='top';
