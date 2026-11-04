@@ -5,8 +5,8 @@
 module.exports = {
   borrowRate: 20,              // 借錢成功率（%）
   borrowAmount: 30,            // 借到的金幣（不用還）
-  robAmount: 25,               // 搶一次的金幣
-  robMax: 3,                   // 每個視窗期最多搶幾次
+  robAmount: 15,               // 搶一次的金幣
+  robMax: 1e9,                 // 搶錢次數上限：設得很大＝等於不限次數（每位睡著的老師仍然一次只能被搶一次）
   robWindowMs: 6 * 3600000,    // 視窗期長度：從第一次搶開始算 6 小時，滿了次數重置
   robCountdownMs: 10000,       // 搶完後老師幾毫秒後醒來
   talkRange: 4,                // 伺服器允許對話的最大距離（格）
@@ -26,7 +26,7 @@ module.exports = {
   catchDist: 1.1,              // 碰到你就算抓到
   searchMs: 4000,              // 搜一個櫃子要幾毫秒
   hideNear: 2.5, hideFar: 12, hideMin: 0.05, hideRollMs: 2000, // 躲櫃子被發現：2.5 格內 100%，往外遞減到 12 格 5%，每 2 秒判斷一次
-  fine: 30,                    // 被抓賠的金幣（還 25 + 罰 5）
+  fine: 25,                    // 被抓賠的金幣（還 15 + 罰 10）
   // ── 愛校服務（第 7 步）──
   svcCountMs: 20000, trashN: 5, svcSpawn: { x: 24, z: 10 },
   // 六個教室長條櫃：k＝編號（一樓 0～2、二樓 3～5），x、z＝站在櫃子前的位置，fl＝樓層
