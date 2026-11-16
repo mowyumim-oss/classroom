@@ -1,7 +1,8 @@
 'use strict';
 // 教室 — HTTP + WebSocket 伺服器
 // 功能：三間教室各自的黑板、窗戶狀態同步、位置同步（含高度）、黑板保存、暱稱（長度與重複檢查）、大老二（發牌與規則全在伺服器）、
-//       老師 NPC（辦公室走動、依遊戲時間上下課）、點名、黑板題目、上下課鐘
+//       老師 NPC（辦公室走動、依遊戲時間上下課）、點名、黑板題目、上下課鐘、
+//       圖書館電腦連線遊戲（arcade.js）、特效／鋼琴音符轉播、三樓福利社、三層樓＋天臺的尋路
 var http = require('http');
 var fs = require('fs');
 var path = require('path');
@@ -27,8 +28,9 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
 // ───────── 抽獎（獎品表與機率在 gacha.js；結果、扣款、背包都由伺服器決定）─────────
 var G = null;
 try { G = require('./gacha.js'); } catch (e) { console.log('gacha.js 讀取失敗，抽獎功能關閉：' + e.message); }
-var GCAT_JSON = G ? JSON.stringify({ t: 'gcat', cat: G.catalog() }) : null;
-var TC = require('./tconfig.js'); // 老師互動設定（借錢、搶錢、睡覺、台詞、辦公桌）
+function gcatJson() { return G ? JSON.stringify({ t: 'gcat', cat: G.catalog() }) : null; } // 每次重新算：限定池每週輪換
+var limFeat = G ? G.featured(Date.now()).id : '';
+var TC = require('./tconfig.js'); // 老師互動設定（借錢、搶錢、睡覺、台詞、辦公桌）、電腦、福利社
 
 function normRow(row) {
   var inv = G ? G.cleanInv(row.inv) : [];
@@ -139,6 +141,7 @@ function cleanTlog(v) {
       var n = Math.floor(Number(v.r.n)), t0 = Math.floor(Number(v.r.t0));
       if (n > 0 && n <= 99 && t0 > 0) o.r = { n: n, t0: t0 };
     }
+    if (v.pc && typeof v.pc === 'object' && v.pc.d === day) { var pn = Math.floor(Number(v.pc.n)); if (pn > 0 && pn <= 100000) o.pc = { d: day, n: pn }; } // 今天從電腦遊戲賺了多少
   }
   return o;
 }
@@ -184,7 +187,7 @@ function onTk(ws, m) {
       if (row.tlog.b[t.name] === day) return { err: 'done' }; // 每位老師一天只能借一次（成功或失敗都算）
       var ok = crypto.randomInt(100) < TC.borrowRate;
       var b = Object.assign({}, row.tlog.b); b[t.name] = day;
-      var tl = { b: b, r: row.tlog.r }, coins = row.coins + (ok ? TC.borrowAmount : 0);
+      var tl = Object.assign({}, row.tlog, { b: b }), coins = row.coins + (ok ? TC.borrowAmount : 0);
       return { patch: { coins: coins, tlog: tl },
         apply: { coins: coins, stars: row.stars, inv: row.inv, pity: row.pity, equip: row.equip, tlog: tl }, out: { ok: ok } };
     }).then(function (x) {
@@ -205,7 +208,7 @@ function onTk(ws, m) {
     txn(ws, function (row) {
       var n2 = Date.now(), r = robState(row.tlog, n2);
       if (r.n >= TC.robMax) return { err: 'limit' };
-      var tl = { b: row.tlog.b, r: { n: r.n + 1, t0: r.t0 || n2 } }, coins = row.coins + TC.robAmount;
+      var tl = Object.assign({}, row.tlog, { r: { n: r.n + 1, t0: r.t0 || n2 } }), coins = row.coins + TC.robAmount;
       return { patch: { coins: coins, tlog: tl },
         apply: { coins: coins, stars: row.stars, inv: row.inv, pity: row.pity, equip: row.equip, tlog: tl }, out: {} };
     }).then(function (x) {
@@ -238,7 +241,7 @@ var server = http.createServer(function (req, res) {
 
 var wss = new WebSocketServer({ server: server, path: '/ws', maxPayload: 400 * 1024 });
 var clients = new Set();
-var NWIN = 34; // 窗戶總數：一樓 17 扇（東側 10 + 走廊側 7）＋ 二樓 17 扇
+var NWIN = 51; // 窗戶總數：每層 17 扇（東側 10 + 走廊側 7）× 一、二、三樓
 var W = []; while (W.length < NWIN) W.push(0); // 窗戶開關（記憶體，重啟後全部關閉）
 var boards = [null, null, null]; // 三間教室各自的黑板快照（記憶體，重啟後清空）
 function roomIdx(v) { v = Number(v); return v === 1 || v === 2 ? v : 0; } // 黑板最新快照（記憶體，重啟後會清空）
@@ -340,6 +343,9 @@ function pubPresence(ws) {
   if (ws.equip) { for (var ek in ws.equip) { o.e = ws.equip; break; } } // 穿戴由伺服器決定（玩家自己傳的 e 會被 cleanPresence 丟掉）
   o.q = ws.toi >= 0 ? ws.toi : -1;
   o.hd = ws.hide >= 0 ? 1 : 0; o.sv = ws.svc ? 1 : 0; // 躲在櫃子裡（別人看不到）、愛校服務中（頭上掛牌）
+  var now = Date.now();
+  if (ws.buy && ws.buy.until > now) { o.it = ws.buy.k; o.itl = ws.buy.until - now; } // 福利社買的東西（拿在手上）
+  var ag = arcade.busy(ws); if (ag) o.ag = ag; // 正在玩的電腦遊戲（螢幕畫面）
   // 馬桶座位同樣由伺服器決定 // 大老二座位由伺服器決定，不接受玩家自填
   return o;
 }
@@ -968,6 +974,8 @@ function simTick() {
   TCH.forEach(function (t) { stepTeacher(t, dt, now); });
   janStep(dt, now);
   svcTick(now);
+  arcade.tick(now);
+  if (G && tickNo % 50 === 0) { var lf = G.featured(now).id; if (lf !== limFeat) { limFeat = lf; var gj = gcatJson(); clients.forEach(function (c) { if (c.readyState === 1) c.send(gj); }); } } // 限定池換期
   if (bellS !== n) { bellS = n; sendAll({ t: 'bell', k: 'start', n: n }); }
   if (ph >= CLASS_END && bellE !== n) { bellE = n; sendAll({ t: 'bell', k: 'end', n: n }); }
   if (tickNo % 2) return; // 位置每 0.2 秒廣播一次，沒變化就不送（每 2 秒補送一次校時）
@@ -1022,13 +1030,25 @@ var J = { x: -6.5, z: -18, y: 0, f: 0, st: 0, path: [], gx: 0, gz: 0, replanAt: 
 function janMsg() {
   return { t: 'jan', x: Math.round(J.x * 100) / 100, z: Math.round(J.z * 100) / 100, y: Math.round(J.y * 100) / 100, f: Math.round(J.f * 100) / 100, s: J.st, b: Date.now() < J.sayUntil ? J.say : '' };
 }
-var NG = { s: 0.5, x0: -40, z0: -40, nx: 172, nz: 220 }, FH = 4.2;
+var NG = { s: 0.5, x0: -40, z0: -40, nx: 172, nz: 220 }, FH = 4.2, NFL = 4; // 0 一樓、1 二樓、2 三樓、3 天臺
+function flOf(y) { return y >= 3 * FH - 1 ? 3 : y >= 2 * FH - 1 ? 2 : y >= FH - 1 ? 1 : 0; } // 玩家腳的高度 → 樓層
+function nflOf(y) { return Math.max(0, Math.min(NFL - 1, Math.floor((y + FH / 2) / FH))); } // NPC（樓梯走到一半也算）
 var DOORZ = [-18, -11, -4, 5, 10, 19, 24, 33, 38], EG0 = -21 + 62 / 15 * 7, EG1 = -21 + 62 / 15 * 8;
+var ROOFBLK = TC.roofBlk || [];
 function wallBlk(fl, x, z) {
-  if (!(x > -11.3 && x < 8.3 && z > -21.3 && z < 41.3)) return fl === 1;      // 一樓戶外可走；二樓建築外是空的
+  if (fl === 3) {                                                                 // 天臺：女兒牆、樓梯間小屋（門在南面）、水塔等擺設
+    if (!(x > -10.7 && x < 7.7 && z > -20.7 && z < 40.7)) return true;
+    if (x > -8.3 && x < 3.8 && z > 34.7) {
+      var inside = x > -7.7 && x < -3.6 && z > 35.3 && z < 40.7, door = x > -7 && x < -5 && z <= 35.3;
+      if (!(inside || door)) return true;
+    }
+    for (var rb = 0; rb < ROOFBLK.length; rb++) { var q = ROOFBLK[rb]; if (x > q[0] - 0.3 && x < q[1] + 0.3 && z > q[2] - 0.3 && z < q[3] + 0.3) return true; }
+    return false;
+  }
+  if (!(x > -11.3 && x < 8.3 && z > -21.3 && z < 41.3)) return fl >= 1;      // 一樓戶外可走；二、三樓建築外是空的
   if (Math.abs(z + 21) < 0.3 || Math.abs(z - 41) < 0.3 || Math.abs(x - 8) < 0.3) return true;
   if (Math.abs(x + 8) < 0.3) {                                                   // 教室、廁所、辦公室、樓梯間的門洞
-    for (var i = 0; i < DOORZ.length; i++) { if (fl === 1 && DOORZ[i] === -18) continue; if (Math.abs(z - DOORZ[i]) < 1.0) return false; }
+    for (var i = 0; i < DOORZ.length; i++) { if (fl >= 1 && DOORZ[i] === -18) continue; if (Math.abs(z - DOORZ[i]) < 1.0) return false; }
     return true;
   }
   if (Math.abs(x + 11) < 0.3) return !(fl === 0 && z > EG0 && z < EG1);          // 走廊欄杆，只有一樓正門口能進出
@@ -1037,7 +1057,7 @@ function wallBlk(fl, x, z) {
   else if (x > -3.5 && x < 3.5 && z > 36.5 && z < 40.6) return true;
   return false;
 }
-var BLK = [0, 1].map(function (fl) {
+var BLK = [0, 1, 2, 3].map(function (fl) {
   var a = new Uint8Array(NG.nx * NG.nz);
   for (var cz = 0; cz < NG.nz; cz++) for (var cx = 0; cx < NG.nx; cx++) a[cz * NG.nx + cx] = wallBlk(fl, NG.x0 + (cx + 0.5) * NG.s, NG.z0 + (cz + 0.5) * NG.s) ? 1 : 0;
   return a;
@@ -1097,17 +1117,21 @@ function astar(fl, sx, sz, gx, gz) {
 }
 var ST_UP = [{ x: -6.5, z: 37.5, y: 0 }, { x: 0, z: 37.5, y: 2.1 }, { x: 3, z: 38.5, y: 2.1 }, { x: 3, z: 39.6, y: 2.1 }, { x: -3.5, z: 39.6, y: 4.2 }, { x: -5.5, z: 39.8, y: 4.2 }];
 function stw(q) { return { x: q.x, z: q.z, y: q.y, st: true }; }
+// 跨樓層：一層一層走同一座 U 形樓梯（每層的樓梯位置一樣，只是高度加上 FH）
 function janPlan(fx, fz, ffl, tx, tz, tfl) {
-  var a, b;
   if (ffl === tfl) return astar(ffl, fx, fz, tx, tz) || [];
-  if (ffl === 0) {
-    a = astar(0, fx, fz, ST_UP[0].x, ST_UP[0].z); b = astar(1, ST_UP[5].x, ST_UP[5].z, tx, tz);
-    if (!a || !b) return [];
-    return a.concat(ST_UP.slice(1).map(stw), b);
+  var out = [], cx = fx, cz = fz, fl = ffl;
+  while (fl !== tfl) {
+    var up = tfl > fl, lv = up ? fl : fl - 1;
+    var S = ST_UP.map(function (q) { return { x: q.x, z: q.z, y: q.y + lv * FH }; });
+    var entry = up ? S[0] : S[5], seq = up ? S.slice(1) : S.slice(0, 5).reverse(), ex = up ? S[5] : S[0];
+    var a = astar(fl, cx, cz, entry.x, entry.z);
+    if (!a) return [];
+    out = out.concat(a, seq.map(stw));
+    cx = ex.x; cz = ex.z; fl = up ? fl + 1 : fl - 1;
   }
-  a = astar(1, fx, fz, ST_UP[5].x, ST_UP[5].z); b = astar(0, ST_UP[0].x, ST_UP[0].z, tx, tz);
-  if (!a || !b) return [];
-  return a.concat(ST_UP.slice(0, 5).reverse().map(stw), b);
+  var b = astar(fl, cx, cz, tx, tz);
+  return b ? out.concat(b) : [];
 }
 function pickTarget(now) {
   var b = null;
@@ -1128,13 +1152,13 @@ function janStep(dt, now) {
   J.st = 0;
   var tg = pickTarget(now), gx = -6.5, gz = -18, gfl = 0, pr = null;
   if (tg) {
-    pr = tg.by.presence; gfl = pr.y >= 3.2 ? 1 : 0; gx = pr.x; gz = pr.z;
+    pr = tg.by.presence; gfl = flOf(pr.y); gx = pr.x; gz = pr.z;
     var offs = [[-1.1, 0], [1.1, 0], [0, -1.1], [0, 1.1]];
     for (var k = 0; k < offs.length; k++) if (!blkAt(gfl, pr.x + offs[k][0], pr.z + offs[k][1])) { gx = pr.x + offs[k][0]; gz = pr.z + offs[k][1]; break; }
     if (J.tgt !== tg.by) { J.tgt = tg.by; J.say = tg.by.nick + '，請沖水！'; J.sayUntil = now + 4000; J.remind = now + 8000; }
     else if (now > J.remind) { J.say = '請沖水！'; J.sayUntil = now + 2500; J.remind = now + 8000; }
   } else J.tgt = null;
-  var curFl = J.y >= 2.1 ? 1 : 0, locked = J.path.length && J.path[0].st;
+  var curFl = nflOf(J.y), locked = J.path.length && J.path[0].st;
   if (!locked) {
     if (curFl === gfl && Math.hypot(gx - J.x, gz - J.z) < (tg ? 0.4 : 0.15)) {
       J.path = [];
@@ -1152,7 +1176,7 @@ var WZE = [-11, -4, 0, 4, 10, 14, 18, 24, 28, 32], WZW = [-8.5, -1.2, 2, 12.8, 1
 function hyp2(a, b) { return Math.hypot(a.x - b.x, a.z - b.z); }
 function pathLen(x, z, pts) { var L = 0; pts.forEach(function (q) { L += Math.hypot(q.x - x, q.z - z); x = q.x; z = q.z; }); return L; }
 function chasePlan(t, gx, gz, gfl) {
-  var tfl = t.y >= 2.1 ? 1 : 0, g = { x: gx, z: gz }, me = { x: t.x, z: t.z };
+  var tfl = nflOf(t.y), g = { x: gx, z: gz }, me = { x: t.x, z: t.z };
   var best = janPlan(t.x, t.z, tfl, gx, gz, gfl), bl = best.length ? pathLen(t.x, t.z, best) : Infinity;
   if (tfl === 0 && gfl === 0) {
     var cand = [];
@@ -1195,7 +1219,7 @@ function cabOrder(x, z, fl) {
 }
 function startChase(t, ws, now) {
   var p = ws.presence || { x: t.x, z: t.z, y: 0 };
-  t.chase = { ws: ws, end: now + TC.chaseMs, mode: 'last', last: { x: p.x, z: p.z, fl: p.y >= 3.2 ? 1 : 0 }, pingAt: now + TC.pingEveryMs, pingUntil: 0, roll: now + TC.hideRollMs, order: [], si: 0, sUntil: 0, replanAt: 0, gx: 0, gz: 0 };
+  t.chase = { ws: ws, end: now + TC.chaseMs, mode: 'last', last: { x: p.x, z: p.z, fl: flOf(p.y) }, pingAt: now + TC.pingEveryMs, pingUntil: 0, roll: now + TC.hideRollMs, order: [], si: 0, sUntil: 0, replanAt: 0, gx: 0, gz: 0 };
   t.path = []; t.cp = []; t.y = 0; t.st = 1;
   tSay(t, '站住！', 2500);
   sendTo(ws, { t: 'ch', a: 'go', ms: TC.chaseMs });
@@ -1204,7 +1228,7 @@ function chaseTick(t, dt, now) {
   var c = t.chase, ws = c.ws, p = ws.presence;
   if (!p || ws.readyState !== 1) { chaseEnd(t, 'dc', now); return; }
   if (now >= c.end) { chaseEnd(t, 'esc', now); return; }
-  var tfl = t.y >= 2.1 ? 1 : 0, pfl = p.y >= 3.2 ? 1 : 0, hid = ws.hide >= 0, d = Math.hypot(p.x - t.x, p.z - t.z);
+  var tfl = nflOf(t.y), pfl = flOf(p.y), hid = ws.hide >= 0, d = Math.hypot(p.x - t.x, p.z - t.z);
   if (now >= c.pingAt) { // 位置感應：每 pingEveryMs 開始一次，持續 pingMs
     c.pingAt = now + TC.pingEveryMs; c.pingUntil = now + TC.pingMs;
     sendTo(ws, { t: 'ch', a: 'ping', ms: TC.pingMs }); tSay(t, '我知道你在哪！', 2000);
@@ -1248,7 +1272,7 @@ function chaseTick(t, dt, now) {
   cmove(t, dt);
 }
 function backStep(t, dt, now) {
-  var tfl = t.y >= 2.1 ? 1 : 0, oi = TN.oi;
+  var tfl = nflOf(t.y), oi = TN.oi;
   if (!t.cp.length) {
     if (tfl === 0 && Math.hypot(oi.x - t.x, oi.z - t.z) < 0.8) t.cp = [];
     else t.cp = janPlan(t.x, t.z, tfl, oi.x, oi.z, 0);
@@ -1314,12 +1338,84 @@ function onHide(ws, m) {
   if (m.a !== 'in') return;
   var k = Math.floor(Number(m.k)), c = TC.cabs[k];
   if (!c || ws.svc) { sendTo(ws, { t: 'hide', a: 'in', ok: 0, err: 'no' }); return; }
-  if ((p.y >= 3.2 ? 1 : 0) !== c.fl || Math.hypot(p.x - c.x, p.z - c.z) > 3.2) { sendTo(ws, { t: 'hide', a: 'in', ok: 0, err: 'far' }); return; }
+  if (flOf(p.y) !== c.fl || Math.hypot(p.x - c.x, p.z - c.z) > 3.2) { sendTo(ws, { t: 'hide', a: 'in', ok: 0, err: 'far' }); return; }
   var taken = false;
   clients.forEach(function (o) { if (o !== ws && o.hide === k) taken = true; });
   if (taken) { sendTo(ws, { t: 'hide', a: 'in', ok: 0, err: 'taken' }); return; }
   ws.hide = k; presenceOut(ws);
   sendTo(ws, { t: 'hide', a: 'in', ok: 1, k: k });
+}
+
+// ───────── 圖書館電腦（多人遊戲在 arcade.js）─────────
+// 金幣：每天最多 TC.pcDailyCap 枚（記在 tlog.pc；資料庫沒有 tlog 欄位時，改記在記憶體）
+var pcMem = new Map();
+function atPc(ws) {
+  var p = ws.presence;
+  if (!p || flOf(p.y) !== 1) return false;
+  return (TC.pcs || []).some(function (q) { return Math.hypot(p.x - q.x, p.z - q.z) < 1.6; });
+}
+function arcadeAward(ws, n) {
+  if (!sb || !ws.uid || n <= 0) return Promise.resolve(0);
+  var cap = TC.pcDailyCap || 80;
+  return txn(ws, function (row) {
+    var day = twDay(Date.now()), used;
+    if (ws.tOff) { var mm = pcMem.get(ws.uid); used = mm && mm.d === day ? mm.n : 0; }
+    else used = row.tlog.pc && row.tlog.pc.d === day ? row.tlog.pc.n : 0;
+    var g = Math.min(n, cap - used);
+    if (g <= 0) return { err: 'cap' };
+    var coins = row.coins + g, patch = { coins: coins }, apply = { coins: coins, stars: row.stars, inv: row.inv, pity: row.pity, equip: row.equip };
+    if (!ws.tOff) { var tl = Object.assign({}, row.tlog, { pc: { d: day, n: used + g } }); patch.tlog = tl; apply.tlog = tl; }
+    return { patch: patch, apply: apply, out: { g: g, used: used + g, day: day } };
+  }).then(function (x) {
+    if (!x.ok) return 0;
+    applyRow(ws, x.c.apply);
+    if (ws.tOff) pcMem.set(ws.uid, { d: x.c.out.day, n: x.c.out.used });
+    sendTo(ws, { t: 'auth', ok: true, n: ws.nick, coins: ws.coins });
+    sendGinv(ws);
+    return x.c.out.g;
+  });
+}
+var arcade = require('./arcade.js')({ sendTo: sendTo, clients: clients, atPc: atPc, award: arcadeAward, changed: function (ws) { presenceOut(ws); } });
+
+// ───────── 特效轉播：限定皮膚的互動特效、跳躍、表情、鋼琴音符、紙飛機 ─────────
+var FXK = { b: 1, j: 1, em: 1, pn: 1, pl: 1 };
+function onFx(ws, m) {
+  if (!ws.nick || !ws.presence || !FXK[m.k]) return;
+  var now = Date.now();
+  if (now - (ws.fxT || 0) >= 1000) { ws.fxT = now; ws.fxN = 0; }
+  if (++ws.fxN > 16) return;
+  var p = ws.presence, o = { t: 'fx', k: m.k, peer: ws.id, x: p.x, y: p.y, z: p.z };
+  if (m.k === 'b' || m.k === 'j') { o.s = (ws.equip && ws.equip.skin) || ''; o.tr = (ws.equip && ws.equip.trail) || ''; } // 特效樣式看伺服器記的穿戴
+  else if (m.k === 'em') { var e = Math.floor(Number(m.e)); if (!(e >= 0 && e < 6)) return; o.e = e; }
+  else if (m.k === 'pn') { var n = Math.floor(Number(m.n)); if (!(n >= 0 && n < 25)) return; o.n = n; }
+  else if (m.k === 'pl') { o.f = num(m.f, -10, 10, 0); o.c = Math.floor(num(m.c, 0, 7, 0)); }
+  others(ws, o);
+}
+
+// ───────── 三樓福利社：買東西扣金幣，效果持續一段時間（別人也看得到你手上拿著）─────────
+function onShop(ws, m) {
+  if (m.a !== 'buy') return;
+  var it = (TC.shop || []).filter(function (x) { return x.k === m.k; })[0];
+  if (!it) return;
+  var p = ws.presence, A = TC.shopArea;
+  if (!p || flOf(p.y) !== A.fl || p.x < A.x0 || p.x > A.x1 || p.z < A.z0 || p.z > A.z1) { sendTo(ws, { t: 'shop', ok: false, r: 'far' }); return; }
+  if (!ws.uid) { sendTo(ws, { t: 'shop', ok: false, r: 'guest' }); return; }
+  if (!sb) { sendTo(ws, { t: 'shop', ok: false, r: 'off' }); return; }
+  if (ws.gPend >= 3) { sendTo(ws, { t: 'shop', ok: false, r: 'busy' }); return; }
+  ws.gPend++;
+  txn(ws, function (row) {
+    if (row.coins < it.price) return { err: 'coins' };
+    var c = row.coins - it.price;
+    return { patch: { coins: c }, apply: { coins: c, stars: row.stars, inv: row.inv, pity: row.pity, equip: row.equip } };
+  }).then(function (x) {
+    ws.gPend--;
+    if (!x.ok) { sendTo(ws, { t: 'shop', ok: false, r: x.err || 'dberr' }); sendGinv(ws); return; }
+    applyRow(ws, x.c.apply);
+    ws.buy = { k: it.k, until: Date.now() + it.ms };
+    sendTo(ws, { t: 'shop', ok: true, k: it.k, ms: it.ms });
+    sendTo(ws, { t: 'auth', ok: true, n: ws.nick, coins: ws.coins });
+    sendGinv(ws); presenceOut(ws);
+  });
 }
 
 // ───────── 連線 ─────────
@@ -1344,16 +1440,18 @@ function validStrokes(d) {
 wss.on('connection', function (ws) {
   if (clients.size >= MAX_CLIENTS) { ws.close(1013, 'full'); return; }
   ws.id = crypto.randomBytes(4).toString('hex');
-  ws.uid = null; ws.coins = 0; ws.stars = 0; ws.inv = []; ws.pity = G ? G.cleanPity(null) : {}; ws.equip = {}; ws.gOff = false; ws.gq = null; ws.gPend = 0; ws.tOff = false; ws.tlog = cleanTlog(null); ws.tkAt = 0; ws.hide = -1; ws.svc = null; ws.authBusy = false; ws.nick = null; ws.presence = null; ws.seat = -1; ws.tb = -1; ws.toi = -1; ws.rr = -1; ws.hit = false; ws.slotAt = 0; ws.slotMs = 0; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
+  ws.uid = null; ws.coins = 0; ws.stars = 0; ws.inv = []; ws.pity = G ? G.cleanPity(null) : {}; ws.equip = {}; ws.gOff = false; ws.gq = null; ws.gPend = 0; ws.tOff = false; ws.tlog = cleanTlog(null); ws.tkAt = 0; ws.hide = -1; ws.svc = null; ws.ar = null; ws.pcOn = false; ws.buy = null; ws.authBusy = false; ws.nick = null; ws.presence = null; ws.seat = -1; ws.tb = -1; ws.toi = -1; ws.rr = -1; ws.hit = false; ws.slotAt = 0; ws.slotMs = 0; ws.alive = true; ws.rl = 0; ws.rlT = Date.now();
   clients.add(ws);
   ws.on('pong', function () { ws.alive = true; });
   ws.on('error', function () {});
 
   var peers = [];
   clients.forEach(function (c) { if (c !== ws && c.nick && c.presence) peers.push({ peer: c.id, presence: pubPresence(c) }); });
-  sendTo(ws, { t: 'hello', v: '1.7', id: ws.id, peers: peers, boards: boards });
+  sendTo(ws, { t: 'hello', v: '2.0', id: ws.id, peers: peers, boards: boards });
   sendLabels(ws);
-  if (GCAT_JSON && ws.readyState === 1) ws.send(GCAT_JSON);
+  var gj = gcatJson();
+  if (gj && ws.readyState === 1) ws.send(gj);
+  sendTo(ws, { t: 'shopcat', items: TC.shop || [] });
   sendTo(ws, { t: 'win', w: W });
   sendTo(ws, { t: 'tinfo', ts: TCH.map(function (t) { return { n: t.name, s: t.subj, c: t.color }; }) });
   sendTo(ws, { t: 'tch', now: Date.now(), ts: lastArr });
@@ -1382,6 +1480,9 @@ wss.on('connection', function (ws) {
     else if (m.t === 'svc') onSvc(ws, m); // 愛校服務撿垃圾
     else if (m.t === 'tk') onTk(ws, m); // 與老師對話
     else if (m.t === 'gacha') onGacha(ws, m); // 抽獎與換裝（只有登入帳號可用）
+    else if (m.t === 'ar') arcade.onMsg(ws, m); // 圖書館電腦遊戲
+    else if (m.t === 'fx') onFx(ws, m); // 特效、表情、鋼琴
+    else if (m.t === 'shop') onShop(ws, m); // 福利社
     else if (!ws.nick) return; // 沒有暱稱的人不能寫黑板
     else if (m.t === 'emit') {
       if (m.topic !== 'board') return;
@@ -1407,7 +1508,7 @@ wss.on('connection', function (ws) {
   });
 
   ws.on('close', function () {
-    leaveTable(ws); standToilet(ws);
+    leaveTable(ws); standToilet(ws); arcade.leave(ws);
     TCH.forEach(function (t) { if (t.chase && t.chase.ws === ws) chaseEnd(t, 'dc', Date.now()); }); // 追逐中斷線視同被抓
     clients.delete(ws);
     if (ws.nick) others(ws, { t: 'leave', peer: ws.id });
