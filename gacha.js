@@ -1,13 +1,14 @@
 'use strict';
 // 抽獎系統：獎品表、機率、保底、星星幣。想新增或調整獎品，改這個檔案就好。
-// r：稀有度 0＝普通、1＝稀有、2＝最高　slot：穿戴欄位（skin 皮膚、body 身上、head 頭上、face 臉上、back 背後、trail 足跡、pet 寵物）
+// r：稀有度 0＝普通、1＝稀有、2＝最高　slot：穿戴欄位（skin 皮膚／服裝、body 身上、head 頭上、face 臉上、back 背後、trail 足跡、hairfx 髮色特效、pet 寵物）
+// 限定池的 skin（鳳凰、星河、櫻吹雪、魔法少女、偶像）是整套服裝，會換掉玩家原本的衣服
 // 卡池：skin／hair／pet 是「常駐池」（永遠都在）；lim 是「限定池」：最高獎每週輪換一款限定皮膚（週一 00:00 台灣時間換）。
 // 新增獎品時，前端（index.html）也要有對應 id 的造型，才畫得出來。
 var crypto = require('crypto');
 
 var POOLS = { skin: '皮膚', hair: '髮式', pet: '寵物', lim: '限定' };
 var STD = ['skin', 'hair', 'pet'];   // 常駐池
-var SLOTS = ['skin', 'body', 'head', 'face', 'back', 'trail', 'pet'];
+var SLOTS = ['skin', 'body', 'head', 'face', 'back', 'trail', 'hairfx', 'pet'];
 
 var ITEMS = [
   // 皮膚池
@@ -42,9 +43,13 @@ var ITEMS = [
   { id: 'lim_phoenix', pool: 'lim', slot: 'skin', r: 2, n: '鳳凰・焰羽' },
   { id: 'lim_galaxy', pool: 'lim', slot: 'skin', r: 2, n: '星河・銀漢' },
   { id: 'lim_sakura', pool: 'lim', slot: 'skin', r: 2, n: '櫻吹雪' },
+  { id: 'lim_magical', pool: 'lim', slot: 'skin', r: 1, n: '魔法少女裝' },
+  { id: 'lim_aurora', pool: 'lim', slot: 'hairfx', r: 1, n: '極光漸層髮' },
   { id: 'lim_wings', pool: 'lim', slot: 'back', r: 1, n: '光之翼' },
   { id: 'lim_halo', pool: 'lim', slot: 'head', r: 1, n: '天使光環' },
   { id: 'lim_trail_star', pool: 'lim', slot: 'trail', r: 1, n: '星光足跡' },
+  { id: 'lim_idol', pool: 'lim', slot: 'skin', r: 0, n: '偶像舞台裝' },
+  { id: 'lim_catears', pool: 'lim', slot: 'head', r: 0, n: '貓耳' },
   { id: 'lim_cape', pool: 'lim', slot: 'back', r: 0, n: '英雄披風' },
   { id: 'lim_trail_bubble', pool: 'lim', slot: 'trail', r: 0, n: '泡泡足跡' },
   { id: 'lim_trail_note', pool: 'lim', slot: 'trail', r: 0, n: '音符足跡' },

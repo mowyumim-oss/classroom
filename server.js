@@ -333,7 +333,8 @@ function cleanPresence(p) {
   return {
     x: num(p.x, -70, 70, 0), y: num(p.y, -5, 30, 0), z: num(p.z, -70, 70, 0), f: num(p.f, -10, 10, 0),
     s: Math.floor(num(p.s, -1, 200, -1)), h: Math.floor(num(p.h, 0, 3, 0)),
-    c: (typeof p.c === 'string' && /^#[0-9a-f]{6}$/i.test(p.c)) ? p.c : '#e8553d'
+    c: (typeof p.c === 'string' && /^#[0-9a-f]{6}$/i.test(p.c)) ? p.c : '#e8553d',
+    lk: (typeof p.lk === 'string' && /^[0-9a-z]{5}$/.test(p.lk)) ? p.lk : undefined // 髮型、髮色、服裝、眼睛、膚色（各一碼）
   };
 }
 function pubPresence(ws) {
@@ -1447,7 +1448,7 @@ wss.on('connection', function (ws) {
 
   var peers = [];
   clients.forEach(function (c) { if (c !== ws && c.nick && c.presence) peers.push({ peer: c.id, presence: pubPresence(c) }); });
-  sendTo(ws, { t: 'hello', v: '2.0', id: ws.id, peers: peers, boards: boards });
+  sendTo(ws, { t: 'hello', v: '2.1', id: ws.id, peers: peers, boards: boards });
   sendLabels(ws);
   var gj = gcatJson();
   if (gj && ws.readyState === 1) ws.send(gj);
