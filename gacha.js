@@ -40,7 +40,7 @@ var ITEMS = [
   { id: 'pet_poop', pool: 'pet', slot: 'pet', r: 0, n: '一坨便便' },
   { id: 'pet_rock', pool: 'pet', slot: 'pet', r: 0, n: '小石頭' },
   // 限定池：最高獎＝本週限定皮膚（附飄帶、華麗腳印、光環粒子、互動特效），其餘兩款這週抽不到
-  { id: 'lim_phoenix', pool: 'lim', slot: 'skin', r: 2, n: '鳳凰・焰羽', gift: 'lh_phoenix' },
+  { id: 'lim_phoenix', pool: 'lim', slot: 'skin', r: 2, n: '鳳凰・焰羽', gift: ['lh_phoenix', 'prop_fan'] },
   { id: 'lim_galaxy', pool: 'lim', slot: 'skin', r: 2, n: '星河・銀漢', gift: ['lh_galaxy', 'prop_moon'] },
   { id: 'lim_sakura', pool: 'lim', slot: 'skin', r: 2, n: '櫻吹雪', gift: ['lh_sakura', 'prop_wagasa'] },
   { id: 'lim_magical', pool: 'lim', slot: 'skin', r: 1, n: '魔法少女裝', gift: 'lh_magical' },
@@ -61,6 +61,7 @@ var ITEMS = [
   { id: 'lh_magical', pool: 'gift', slot: 'lhair', r: 1, n: '魔法超長雙馬尾' },
   { id: 'lh_idol', pool: 'gift', slot: 'lhair', r: 0, n: '偶像閃亮側馬尾' },
   // 手持道具：一樣是抽到限定服裝時附贈，可以在衣櫃「手持」選要不要拿
+  { id: 'prop_fan', pool: 'gift', slot: 'prop', r: 2, n: '鳳羽焰扇' },
   { id: 'prop_wagasa', pool: 'gift', slot: 'prop', r: 2, n: '櫻花和傘' },
   { id: 'prop_moon', pool: 'gift', slot: 'prop', r: 2, n: '新月星盤權杖' }
 ];
