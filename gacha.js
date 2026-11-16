@@ -8,7 +8,7 @@ var crypto = require('crypto');
 
 var POOLS = { skin: '皮膚', hair: '髮式', pet: '寵物', lim: '限定' };
 var STD = ['skin', 'hair', 'pet'];   // 常駐池
-var SLOTS = ['skin', 'body', 'head', 'face', 'back', 'trail', 'hairfx', 'pet'];
+var SLOTS = ['skin', 'lhair', 'body', 'head', 'face', 'back', 'trail', 'hairfx', 'pet'];
 
 var ITEMS = [
   // 皮膚池
@@ -40,25 +40,32 @@ var ITEMS = [
   { id: 'pet_poop', pool: 'pet', slot: 'pet', r: 0, n: '一坨便便' },
   { id: 'pet_rock', pool: 'pet', slot: 'pet', r: 0, n: '小石頭' },
   // 限定池：最高獎＝本週限定皮膚（附飄帶、華麗腳印、光環粒子、互動特效），其餘兩款這週抽不到
-  { id: 'lim_phoenix', pool: 'lim', slot: 'skin', r: 2, n: '鳳凰・焰羽' },
-  { id: 'lim_galaxy', pool: 'lim', slot: 'skin', r: 2, n: '星河・銀漢' },
-  { id: 'lim_sakura', pool: 'lim', slot: 'skin', r: 2, n: '櫻吹雪' },
-  { id: 'lim_magical', pool: 'lim', slot: 'skin', r: 1, n: '魔法少女裝' },
+  { id: 'lim_phoenix', pool: 'lim', slot: 'skin', r: 2, n: '鳳凰・焰羽', gift: 'lh_phoenix' },
+  { id: 'lim_galaxy', pool: 'lim', slot: 'skin', r: 2, n: '星河・銀漢', gift: 'lh_galaxy' },
+  { id: 'lim_sakura', pool: 'lim', slot: 'skin', r: 2, n: '櫻吹雪', gift: 'lh_sakura' },
+  { id: 'lim_magical', pool: 'lim', slot: 'skin', r: 1, n: '魔法少女裝', gift: 'lh_magical' },
   { id: 'lim_aurora', pool: 'lim', slot: 'hairfx', r: 1, n: '極光漸層髮' },
   { id: 'lim_wings', pool: 'lim', slot: 'back', r: 1, n: '光之翼' },
   { id: 'lim_halo', pool: 'lim', slot: 'head', r: 1, n: '天使光環' },
   { id: 'lim_trail_star', pool: 'lim', slot: 'trail', r: 1, n: '星光足跡' },
-  { id: 'lim_idol', pool: 'lim', slot: 'skin', r: 0, n: '偶像舞台裝' },
+  { id: 'lim_idol', pool: 'lim', slot: 'skin', r: 0, n: '偶像舞台裝', gift: 'lh_idol' },
   { id: 'lim_catears', pool: 'lim', slot: 'head', r: 0, n: '貓耳' },
   { id: 'lim_cape', pool: 'lim', slot: 'back', r: 0, n: '英雄披風' },
   { id: 'lim_trail_bubble', pool: 'lim', slot: 'trail', r: 0, n: '泡泡足跡' },
   { id: 'lim_trail_note', pool: 'lim', slot: 'trail', r: 0, n: '音符足跡' },
-  { id: 'lim_trail_paw', pool: 'lim', slot: 'trail', r: 0, n: '貓掌足跡' }
+  { id: 'lim_trail_paw', pool: 'lim', slot: 'trail', r: 0, n: '貓掌足跡' },
+  // 限定髮型：抽不到，抽到對應的限定服裝時「附贈」（pool 是 gift，不在任何卡池裡）
+  { id: 'lh_phoenix', pool: 'gift', slot: 'lhair', r: 2, n: '鳳凰羽翼捲髮' },
+  { id: 'lh_galaxy', pool: 'gift', slot: 'lhair', r: 2, n: '銀河星光長髮' },
+  { id: 'lh_sakura', pool: 'gift', slot: 'lhair', r: 2, n: '和風櫻花盤髮' },
+  { id: 'lh_magical', pool: 'gift', slot: 'lhair', r: 1, n: '魔法超長雙馬尾' },
+  { id: 'lh_idol', pool: 'gift', slot: 'lhair', r: 0, n: '偶像閃亮側馬尾' }
 ];
 var BY_ID = {};
 ITEMS.forEach(function (it) { BY_ID[it.id] = it; });
 
 var CFG = {
+  preview: true,                    // ★ 預覽模式：true＝所有造型（含限定）大家都能直接穿；檢查完改成 false 就恢復要抽才有
   coinOne: 8, coinTen: 72,          // 金幣：單抽、十抽
   starOne: 20, starTen: 180,        // 星星幣：單抽、十抽（重複普通 5 次或重複稀有 4 次 ＝ 20 星星幣 ＝ 一抽）
   pity: 30,                         // 常駐池：第 30 抽（該池連續沒中最高獎的第 30 抽）保底最高獎
@@ -101,7 +108,9 @@ function draw(pool, pity, inv, n) {
     var it = pick(pool, r), dup = !!owned[it.id], st = 0;
     if (dup) { st = (lim && it.r === 2) ? CFG.limDupTop : CFG.dupStars[it.r]; stars += st; }
     else { owned[it.id] = 1; list.push(it.id); }
-    out.push({ id: it.id, r: it.r, dup: dup ? 1 : 0, st: st });
+    var gift = '';
+    if (it.gift && !owned[it.gift]) { owned[it.gift] = 1; list.push(it.gift); gift = it.gift; } // 附贈配套髮型
+    out.push({ id: it.id, r: it.r, dup: dup ? 1 : 0, st: st, gift: gift });
   }
   return { res: out, inv: list, pity: pity, stars: stars };
 }
@@ -115,6 +124,7 @@ function catalog() {
 function cleanInv(v) {
   var out = [], seen = {};
   if (Array.isArray(v)) v.forEach(function (x) { if (typeof x === 'string' && BY_ID[x] && !seen[x]) { seen[x] = 1; out.push(x); } });
+  out.slice().forEach(function (x) { var g = BY_ID[x].gift; if (g && !seen[g]) { seen[g] = 1; out.push(g); } }); // 以前抽到的人也補送
   return out;
 }
 function cleanPity(v) {
@@ -126,7 +136,7 @@ function cleanEquip(v, inv) {
   var o = {};
   if (v && typeof v === 'object') SLOTS.forEach(function (s) {
     var id = v[s];
-    if (typeof id === 'string' && BY_ID[id] && BY_ID[id].slot === s && inv.indexOf(id) >= 0) o[s] = id;
+    if (typeof id === 'string' && BY_ID[id] && BY_ID[id].slot === s && (CFG.preview || inv.indexOf(id) >= 0)) o[s] = id;
   });
   return o;
 }
