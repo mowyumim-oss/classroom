@@ -1449,7 +1449,7 @@ wss.on('connection', function (ws) {
 
   var peers = [];
   clients.forEach(function (c) { if (c !== ws && c.nick && c.presence) peers.push({ peer: c.id, presence: pubPresence(c) }); });
-  sendTo(ws, { t: 'hello', v: '2.3', id: ws.id, peers: peers, boards: boards });
+  sendTo(ws, { t: 'hello', v: '2.4', id: ws.id, peers: peers, boards: boards });
   sendLabels(ws);
   var gj = gcatJson();
   if (gj && ws.readyState === 1) ws.send(gj);

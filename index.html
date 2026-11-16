@@ -722,7 +722,7 @@ function setLimbs(H,o){ // o: {ua:上臂, fa:前臂, th:大腿, sh:小腿, ft:�
   if(o.th)ms.th.forEach(function(m){m.material=o.th;});if(o.sh)ms.sh.forEach(function(m){m.material=o.sh;});if(o.ft)ms.ft.forEach(function(m){m.material=o.ft;});
   if(o.ch)ms.ch.material=o.ch;if(o.pv)ms.pv.material=o.pv;if(o.cl)ms.cl.material=o.cl;
 }
-function clearOutfit(H){(H.of||[]).forEach(function(q){q.p.remove(q.m);});(H.mats||[]).forEach(function(m){m.dispose();});H.of=[];H.mats=[];H.skirt=null;H.anim=[];H.glow=[];H.prim=null;H.costume='';H.chx=null;H.hairOwn=false;H.kz=null;H.skM=null;
+function clearOutfit(H){(H.of||[]).forEach(function(q){q.p.remove(q.m);});(H.mats||[]).forEach(function(m){m.dispose();});H.of=[];H.mats=[];H.skirt=null;H.anim=[];H.glow=[];H.prim=null;H.costume='';H.chx=null;H.hairOwn=false;H.kz=null;H.skM=null;H.gxM=null;
   H.ms.ha.forEach(function(m){m.material=H.M.skin;});}
 function M_(H,c,o){var m=O_(c,o);H.mats.push(m);return m;}
 
@@ -827,24 +827,7 @@ function buildCostume(H,id){
     for(i=0;i<5;i++){var a2=(i-2)*0.32;var pl2=new THREE.Mesh(sg('plume',function(){var q=new THREE.ConeGeometry(0.03,0.22,6);q.translate(0,0.11,0);return q;}),glowM(H,[0xffd54a,0xff8a1a,0xff3b1a][i%3],0.95,true));pl2.position.set(Math.sin(a2)*0.12,0,Math.cos(a2)*0.12-0.06);pl2.rotation.set(-0.3,0,-a2*0.8);cr.add(pl2);}
     var band=new THREE.Mesh(sg('crband',function(){return new THREE.TorusGeometry(0.17,0.012,6,24,Math.PI*1.1);}),gold);band.rotation.set(-Math.PI/2,0,-0.05-Math.PI*0.05);cr.add(band);addTo(H,H.head,cr);
     H.hairOv={c:0xd8321e,e:0x5a1000};
-  }else if(id==='lim_galaxy'){
-    var gx=gownTex('galaxy'),gm=M_(H,0xffffff,{map:gx,emissive:0xffffff,emissiveMap:gx,emissiveIntensity:.7,roughness:.35,side:THREE.DoubleSide}),silver=M_(H,0xe8eef8,{metalness:.8,roughness:.2,emissive:0x223355});
-    H.glow.push([gm,.7]);H.scroll=gx;
-    setLimbs(H,{ch:gm,cl:silver,ua:gm,fa:gm,pv:gm,th:gm,sh:gm,ft:silver});
-    mkSkirt(H,sg('gownG',function(){return skirtGeo([[0.17,0],[0.22,-0.15],[0.36,-0.4],[0.5,-0.66]],56,function(th,t){return 1+t*t*0.05*Math.sin(th*5);});}),gm,0.08);
-    var tul=new THREE.Mesh(sg('tulle',function(){return skirtGeo([[0.19,-0.02],[0.3,-0.2],[0.46,-0.45],[0.6,-0.64]],56,function(th,t){return 1+t*0.06*Math.sin(th*11);});}),M_(H,0xb8c8ff,{transparent:true,opacity:.28,emissive:0x5a6cff,emissiveIntensity:.6,side:THREE.DoubleSide,depthWrite:false}));H.skirt.add(tul);
-    var hem=new THREE.Mesh(sg('ghem',function(){var q=new THREE.TorusGeometry(0.5,0.012,6,48);q.rotateX(Math.PI/2);q.scale(1,1,0.82);return q;}),glowM(H,0xcfe0ff,1,true));hem.position.y=-0.66;H.skirt.add(hem);
-    part(H,H.torso,sg('waistG',function(){var q=new THREE.TorusGeometry(0.182,0.014,6,24);q.rotateX(Math.PI/2);q.scale(1,0.72,1);return q;}),silver,0,0.07,0);
-    part(H,H.torso,sg('hcol',function(){var q=new THREE.CylinderGeometry(0.12,0.1,0.1,16,1,true,Math.PI*0.6,Math.PI*0.8);return q;}),silver,0,0.5,0);
-    part(H,H.torso,sg('starB',function(){var s=new THREE.Shape();for(var j=0;j<10;j++){var r=j%2?0.02:0.05,a=-Math.PI/2+j*Math.PI/5;if(j)s.lineTo(Math.cos(a)*r,-Math.sin(a)*r);else s.moveTo(Math.cos(a)*r,-Math.sin(a)*r);}return new THREE.ShapeGeometry(s);}),glowM(H,0xfff4c0,1,true),0,0.34,0.145);
-    // 繞著身體轉的兩圈星環、頭後的新月、星光披風
-    [[0.42,0.35,0.5,1],[0.5,-0.05,-0.4,-0.7]].forEach(function(q){var orb=new THREE.Group();orb.position.y=q[1];orb.rotation.set(q[2],0,0.2);
-      var ring=new THREE.Mesh(sg('orbR',function(){var t=new THREE.TorusGeometry(1,0.006,4,64);t.rotateX(Math.PI/2);return t;}),glowM(H,0x9fc4ff,0.6,true));ring.scale.setScalar(q[0]);orb.add(ring);
-      for(var j=0;j<5;j++){var a3=j/5*Math.PI*2,st=new THREE.Mesh(sg('orbS',function(){return new THREE.OctahedronGeometry(0.03);}),glowM(H,j%2?0xfff4c0:0xb8d4ff,1,true));st.position.set(Math.cos(a3)*q[0],0,Math.sin(a3)*q[0]);orb.add(st);}
-      addTo(H,H.hips,orb);H.anim.push({k:'spin',o:orb,w:q[3]});});
-    var moonc=new THREE.Mesh(sg('cres',function(){var s=new THREE.Shape();s.absarc(0,0,0.14,Math.PI*0.3,Math.PI*1.7,false);s.absarc(0.06,0,0.11,Math.PI*1.62,Math.PI*0.38,true);return new THREE.ShapeGeometry(s,24);}),glowM(H,0xfff0b8,1,true));moonc.position.set(0,0.42,-0.2);moonc.rotation.z=-0.6;addTo(H,H.head,moonc);H.anim.push({k:'bob',o:moonc,b:0.42});
-    var cp=new THREE.Group();cp.position.set(0,0.46,-0.14);var cpm=new THREE.Mesh(sg('scape',function(){var q=new THREE.PlaneGeometry(0.5,0.95,1,8);q.translate(0,-0.47,0);return q;}),new THREE.MeshBasicMaterial({map:gx,transparent:true,opacity:.55,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));H.mats.push(cpm.material);cp.add(cpm);addTo(H,H.torso,cp);H.capeOwn=cp;
-    H.hairOv={c:0xc8d4ff,e:0x1a2260};
+  }else if(id==='lim_galaxy'){buildGalaxy(H);
   }else if(id==='lim_sakura'){buildSakura(H);
   }else if(id==='lim_magical'){
     var mt=gownTex('magical'),pk=M_(H,0xffffff,{map:mt,emissive:0xff5aa8,emissiveIntensity:.18,side:THREE.DoubleSide}),wh=M_(H,0xffffff),gd=M_(H,0xffd54a,{metalness:.5,roughness:.3,emissive:0x664400});
@@ -878,6 +861,7 @@ function applyLook(H,L,col,eq){
   var sk=eq.skin||'';H.hairOv=null;H.wingsOwn=false;H.capeOwn=null;H.scroll=null;H.wand=null;
   H.hairOwn=false;H.chx=null;if(COSTUMES[sk])buildCostumeFull(H,sk);else buildOutfit(H,OUTFITS[L.o]||OUTFITS[0],col,sk);
   if(LHAIR[eq.lhair])limHair(H,LHAIR[eq.lhair]);
+  if(PROPS[eq.prop])PROPS[eq.prop](H);
   if(eq.hairfx==='lim_aurora'){H.aurora=true;}
 }
 // 每一幀：裙子擺動、頭髮甩動、限定服裝的動畫
@@ -893,6 +877,8 @@ function animOutfit(H,t,mv,pose){
     else if(a.k==='spinZ')a.o.rotation.y=t*2;
     else if(a.k==='bob')a.o.position.y=a.b+Math.sin(t*1.6)*0.02;
     else if(a.k==='rotZ')a.o.rotation.z=t*a.w;
+    else if(a.k==='twk')a.o.scale.setScalar(a.s0*(0.55+0.45*Math.abs(Math.sin(t*2.3+a.ph))));
+    else if(a.k==='hcur')a.o.rotation.x=(0.2*w+Math.sin(t*1.3)*0.025+Math.sin(H.ph*2)*0.03*w)*(a.s||1);
     else if(a.k==='tum'){a.o.rotation.set(t*a.s+a.ph,t*a.s*0.7,a.ph+Math.sin(t+a.ph));a.o.position.y=a.y+Math.sin(t*1.3+a.ph)*0.05;}
     else if(a.k==='hago'){var P=a.g.attributes.position,B=a.b;for(var i=0;i<a.u.length;i++){var u=a.u[i],e=Math.abs(u-0.5)*2,amp=0.35+e*e*1.4;
       P.array[i*3]=B[i*3]+Math.sin(t*1.5+u*7)*0.01*amp;P.array[i*3+1]=B[i*3+1]+Math.sin(t*1.8+u*9)*0.022*amp;P.array[i*3+2]=B[i*3+2]+Math.sin(t*1.3+u*6)*0.028*amp-w*0.16*e*e;}P.needsUpdate=true;}
@@ -946,14 +932,7 @@ function upgradeTop(H,id){
     ring(H,T,0.07,0.012,0.49,gold,1);part(H,T,sg('chokG',function(){return new THREE.OctahedronGeometry(0.02);}),glowM(H,0xff3b2f,1,true),0,0.47,0.075);
     H.A.forEach(function(a){part(H,a.el,sg('cuffF',function(){return skirtGeo([[0.05,0],[0.085,-0.07]],18,function(th){return 1+Math.sin(th*8)*0.1;});}),fr,0,-0.13,0);ring(H,a.el,0.05,0.01,-0.12,gold,1);});
     for(i=0;i<6;i++){var a=(i-2.5)*0.28;part(H,T,sg('pfeaB',function(){var q=new THREE.PlaneGeometry(0.06,0.16);q.translate(0,-0.08,0);return q;}),new THREE.MeshBasicMaterial({map:featherTex(),transparent:true,side:THREE.DoubleSide,depthWrite:false}),Math.sin(a)*0.19,0.06,Math.cos(a)*0.14,0.15,a,0);}
-  }else if(id==='lim_galaxy'){var gt=BODY.galaxy(),gm=M_(H,0xffffff,{map:gt,emissive:0xffffff,emissiveMap:gt,emissiveIntensity:.55,roughness:.3});H.ms.ch.material=gm;H.glow.push([gm,.55]);
-    var sil=M_(H,0xe8eef8,{metalness:.85,roughness:.18,emissive:0x223355});
-    [-1,1].forEach(function(sd){var cm=part(H,T,sg('crescP',function(){var s=new THREE.Shape();s.absarc(0,0,0.1,Math.PI*0.15,Math.PI*1.85,false);s.absarc(0.05,0,0.08,Math.PI*1.75,Math.PI*0.25,true);return new THREE.ExtrudeGeometry(s,{depth:0.02,bevelEnabled:false});}),sil,sd*0.24,0.47,0,Math.PI/2,0,sd>0?0:Math.PI);});
-    // 透明喇叭袖（星光）
-    var slm=new THREE.MeshStandardMaterial({map:gownTex('galaxy'),transparent:true,opacity:.55,emissive:0x6a7cff,emissiveIntensity:.5,side:THREE.DoubleSide,depthWrite:false});H.mats.push(slm);
-    H.A.forEach(function(a){part(H,a.el,sg('bell',function(){return skirtGeo([[0.06,0],[0.16,-0.24]],24,function(th){return 1+Math.sin(th*6)*0.06;});}),slm,0,-0.02,0);});
-    ring(H,T,0.183,0.016,0.06,sil);part(H,T,sg('buckle',function(){return star5(0.035,0.015,0.012);}),glowM(H,0xfff4c0,1,true),0,0.06,0.135);
-    part(H,T,sg('chain',function(){var q=new THREE.TorusGeometry(0.1,0.004,4,24,Math.PI);q.rotateZ(Math.PI);q.rotateX(-0.4);return q;}),sil,0,0.47,0.06);part(H,T,sg('pend',function(){return star5(0.03,0.012,0.01);}),glowM(H,0xbfe0ff,1,true),0,0.38,0.145);
+  }else if(id==='lim_galaxy'){topGalaxy(H);
   }else if(id==='lim_sakura'){topSakura(H);
   }else if(id==='lim_magical'){var mtx=BODY.magical(),mm2=M_(H,0xffffff,{map:mtx,emissive:0xff5aa8,emissiveIntensity:.12});H.ms.ch.material=mm2;
     var wh=M_(H,0xffffff,{side:THREE.DoubleSide}),pk=M_(H,0xff8fc3,{side:THREE.DoubleSide});
@@ -996,13 +975,7 @@ function limHair(H,id){
     for(var c=0;c<11;c++){var a=Math.PI/2+c/10*Math.PI;for(var r=0;r<5;r++){var u=r/4;sp(sg('pcurl',function(){return new THREE.SphereGeometry(0.075,12,10);}),r<2?base:(r<4?mid:hm(0xffc23a,{emissive:0xff8a00,emissiveIntensity:.6})),Math.sin(a)*(0.22+r*0.02),0.12-r*0.1,Math.cos(a)*(0.21+r*0.02)+(r%2?0.02:-0.02),0,0,0,1-u*0.15);}}
     [-1,1].forEach(function(sd){gradChain(H,g,sd*0.205,0.2,0.0,7,0.085,0.026,0.012,0.1,sd*0.12,0xd8321e,0xffd54a,true);});
     for(i=0;i<3;i++){var f=new THREE.Mesh(sg('hfea',function(){var q=new THREE.PlaneGeometry(0.06,0.2);q.translate(0,0.1,0);return q;}),new THREE.MeshBasicMaterial({map:featherTex(),transparent:true,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending}));H.mats.push(f.material);f.position.set(-0.17,0.32,-0.05);f.rotation.set(0,0.3,0.5+i*0.35);g.add(f);H.anim.push({k:'flut',o:f,ph:i,b:0,amp:0.12});}
-  }else if(id==='lim_galaxy'){ // 銀河及地長髮：銀色漸層到星藍、髮尾發光、星星髮夾
-    var sv=hm(0xe8eeff,{emissive:0x1a2260,emissiveIntensity:.5});capM(sv);
-    [[-0.1,0.3,0.14,0.25],[0.1,0.3,0.14,-0.25]].forEach(function(q){sp(lockG,sv,q[0],q[1],q[2],0.5,0,q[3]);});
-    sp(sg('hlong',function(){return new THREE.CylinderGeometry(0.218,0.24,0.46,18,1,false,Math.PI/2,Math.PI);}),sv,0,0.06,-0.005);
-    for(k=0;k<5;k++){var a2=Math.PI/2+0.25+k*(Math.PI-0.5)/4;gradChain(H,g,Math.sin(a2)*0.2,-0.12,Math.cos(a2)*0.2,6,0.11,0.07,0.035,0.08,0,0xe8eeff,0x5a7cff,true);}
-    [-1,1].forEach(function(sd){gradChain(H,g,sd*0.19,0.15,0.06,5,0.09,0.035,0.02,0.05,0,0xe8eeff,0x9fc4ff,true);});
-    [[0.15,0.36,0.07],[0.18,0.3,0.03],[-0.16,0.34,0.06]].forEach(function(q,j){sp(sg('hstar',function(){return star5(0.03,0.013,0.008);}),glowM(H,j%2?0xbfe0ff:0xfff4c0,1,true),q[0],q[1],q[2],0,q[0]>0?0.6:-0.6,0);});
+  }else if(id==='lim_galaxy'){hairGalaxy(H,g,hm,capM,sp);
   }else if(id==='lim_sakura'){hairSakura(H,g,hm,capM,sp);
   }else if(id==='lim_magical'){ // 魔法少女超長雙馬尾：粉到金漸層、大捲、愛心髮夾
     var pk=hm(0xff8fc3,{emissive:0x5a0a30,emissiveIntensity:.3});capM(pk);
@@ -1111,14 +1084,14 @@ var SK_UPROF=[[0.215,0.03],[0.24,-0.12],[0.29,-0.34],[0.355,-0.56],[0.395,-0.655
 function skUfn(th,t){var b=(1-Math.cos(th))/2,s=Math.max(0,(t-0.45)/0.55);s=s*s*(3-2*s);return [1+b*b*b*s*0.95+Math.sin(th*7)*0.012*t,-b*b*s*0.012];}
 function skTube(pts,r,closed){return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts,!!closed),Math.max(8,pts.length*2),r,6,!!closed);}
 // 天女羽衣：一條半透明的長披帛，從兩手外側垂下、在背後繞成弧形
-function skHagoromo(H,tex){
+function skHagoromo(H,tex,add){
   var C=new THREE.CatmullRomCurve3([[-0.54,-0.62,0.06],[-0.47,-0.2,0.02],[-0.41,0.2,-0.05],[-0.33,0.12,-0.3],[0,-0.16,-0.45],[0.33,0.12,-0.3],[0.41,0.2,-0.05],[0.47,-0.2,0.02],[0.54,-0.62,0.06]].map(function(q){return new THREE.Vector3(q[0],q[1],q[2]);}));
   var N=64,pos=[],uv=[],idx=[],base=[],us=[];
   for(var i=0;i<=N;i++){var u=i/N,p=C.getPointAt(u),tg=C.getTangentAt(u),rad=new THREE.Vector3(p.x,0,p.z);if(rad.lengthSq()<1e-6)rad.set(0,0,-1);rad.normalize();var sd=new THREE.Vector3().crossVectors(tg,rad).normalize().multiplyScalar(0.045);
     [-1,1].forEach(function(s,k){pos.push(p.x+sd.x*s,p.y+sd.y*s,p.z+sd.z*s);uv.push(u*3,k);us.push(u);});
     if(i<N){var a=i*2;idx.push(a,a+1,a+2,a+1,a+3,a+2);}}
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(idx);
-  var m=new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide,depthWrite:false,opacity:0.92});H.mats.push(m);
+  var m=new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide,depthWrite:false,opacity:0.92,blending:add?THREE.AdditiveBlending:THREE.NormalBlending});H.mats.push(m);
   var me=new THREE.Mesh(g,m);addTo(H,H.torso,me);H.anim.push({k:'hago',g:g,b:pos.slice(),u:us});
 }
 function skTsumami(H,par,s,cA,cB,gold,x,y,z,rx,ry,rz){ // 摘み細工的櫻花：外層 8 瓣、內層 5 瓣、中間金珠
@@ -1184,19 +1157,6 @@ function buildSakura(H){
   for(i=0;i<3;i++){var dg=new THREE.Group();dg.position.set(-0.03+i*0.03,-0.03,0.02);dg.add(new THREE.Mesh(sg('kzc',function(){var q=new THREE.CylinderGeometry(0.003,0.003,0.12,4);q.translate(0,-0.06,0);return q;}),gold));
     var bd=new THREE.Mesh(sg('kzb',function(){return new THREE.SphereGeometry(0.014,6,4);}),M_(H,0xff5d8f));bd.position.y=-0.12;dg.add(bd);kz.add(dg);H.anim.push({k:'flut',o:dg,ph:i,b:0,amp:0.25});}
   addTo(H,H.head,kz);H.kz=kz;
-  // 和傘（左手）：紙面整片櫻花、內側傘骨、金邊、頂飾、邊緣垂下的鈴鐺
-  var umb=new THREE.Group();umb.position.set(0,-0.02,0.02);umb.rotation.set(-0.55,0,-0.38);
-  umb.add(new THREE.Mesh(sg('umh2',function(){var q=new THREE.CylinderGeometry(0.008,0.008,1.1,6);q.translate(0,0.5,0);return q;}),M_(H,0x5d3a1a,{roughness:.35})));
-  part(H,umb,sg('skGrip',function(){var q=new THREE.CylinderGeometry(0.013,0.013,0.16,8);q.translate(0,0.02,0);return q;}),crim,0,0,0);
-  var can=new THREE.Mesh(sg('skCan',function(){var q=new THREE.ConeGeometry(0.44,0.17,32,1,true);q.translate(0,1.06,0);return q;}),M_(H,0xffffff,{map:T.umb,emissive:0xffb3cf,emissiveIntensity:.18,roughness:.6,side:THREE.DoubleSide}));can.castShadow=true;umb.add(can);
-  umb.add(new THREE.Mesh(sg('skUrim',function(){var q=new THREE.TorusGeometry(0.44,0.007,5,48);q.rotateX(Math.PI/2);q.translate(0,0.975,0);return q;}),gold));
-  for(i=0;i<16;i++){var rb=new THREE.Mesh(sg('skRib',function(){var q=new THREE.CylinderGeometry(0.003,0.003,0.36,3);q.rotateZ(Math.PI/2);q.translate(0.2,0,0);return q;}),M_(H,0x8a5a2b));rb.position.y=0.92;rb.rotation.set(0,i*Math.PI/8,0.42);umb.add(rb);}
-  umb.add(new THREE.Mesh(sg('skUtop',function(){var q=new THREE.CylinderGeometry(0.03,0.045,0.04,12);q.translate(0,1.15,0);return q;}),crim));
-  part(H,umb,sg('skUknob',function(){return new THREE.SphereGeometry(0.022,10,8);}),gold,0,1.18,0);
-  for(i=0;i<4;i++){var a2=i*Math.PI/2+0.4,dt=new THREE.Group();dt.position.set(Math.cos(a2)*0.44,0.975,Math.sin(a2)*0.44);dt.add(new THREE.Mesh(sg('kzc2',function(){var q=new THREE.CylinderGeometry(0.003,0.003,0.1,4);q.translate(0,-0.05,0);return q;}),gold));
-    var bl=new THREE.Mesh(sg('skBell',function(){return new THREE.SphereGeometry(0.016,10,8);}),gold);bl.position.y=-0.11;dt.add(bl);var bt=new THREE.Mesh(sg('skTas',function(){var q=new THREE.CylinderGeometry(0.004,0.016,0.075,8);q.translate(0,-0.05,0);return q;}),crim);bt.position.y=-0.11;dt.add(bt);
-    umb.add(dt);H.anim.push({k:'flut',o:dt,ph:i*1.3,b:0,amp:0.22});}
-  addTo(H,H.A[0].hand,umb);
   // 天女羽衣
   skHagoromo(H,T.hago);
   // 背後的櫻花光輪（慢慢轉）
@@ -1279,6 +1239,208 @@ function hairSakura(H,g,hm,capM,sp){
 }
 function bow2(H,par,x,y,z,m,gold){var b=new THREE.Group();b.position.set(x,y,z);[-1,1].forEach(function(sd){var w=new THREE.Mesh(sg('bowW',function(){var q=new THREE.ConeGeometry(0.06,0.12,10);q.rotateZ(Math.PI/2);q.translate(0.06,0,0);return q;}),m);w.scale.set(sd*0.8,0.8,0.5);b.add(w);});
   b.add(new THREE.Mesh(sg('skB2k',function(){return new THREE.SphereGeometry(0.022,8,6);}),gold));par.add(b);return b;}
+
+// ───────── 2.4：星河・銀漢・極（星空外袍、銀河光帶、星光內裙、拖地裙襬、薄紗長袖、星環行星、銀河披帛、新月光輪、銀河長髮、新月權杖） ─────────
+function gxStar4(x,cx,cy,r,col){x.save();x.translate(cx,cy);var g=x.createRadialGradient(0,0,0,0,0,r);g.addColorStop(0,col);g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.beginPath();x.arc(0,0,r,0,6.3);x.fill();
+  x.fillStyle='#fff';x.beginPath();x.moveTo(0,-r*1.6);x.quadraticCurveTo(r*0.12,-r*0.12,r*1.6,0);x.quadraticCurveTo(r*0.12,r*0.12,0,r*1.6);x.quadraticCurveTo(-r*0.12,r*0.12,-r*1.6,0);x.quadraticCurveTo(-r*0.12,-r*0.12,0,-r*1.6);x.fill();x.restore();}
+// 星空外袍：深夜藍到紫，星雲、斜斜流過的銀河光帶、星座連線、星光；em＝只畫會發光的部分
+function gxRobePaint(x,w,h,em){
+  var R=rng(41),i,k;
+  if(em){x.fillStyle='#000';x.fillRect(0,0,w,h);}else{var g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'#2a2380');g.addColorStop(0.45,'#231660');g.addColorStop(0.8,'#120c3e');g.addColorStop(1,'#060824');x.fillStyle=g;x.fillRect(0,0,w,h);}
+  var neb=[['#7b3fe4',.5],['#e24fc2',.35],['#2fb3ff',.35],['#4a5cff',.45]],nb=[];for(i=0;i<14;i++){nb.push([R()*w,R()*h,50+R()*110,neb[i%4]]);}
+  var band=[];for(i=0;i<900;i++){var u=R(),bx=u*w,by=h*(0.85-u*0.7)+Math.sin(u*9)*24+(R()+R()+R()-1.5)*34;band.push([bx,by,0.4+R()*1.4,R()]);}
+  var cons=[];for(i=0;i<5;i++){var c=[],cx0=R()*w,cy0=h*(0.1+R()*0.8);for(k=0;k<4+Math.floor(R()*3);k++){cx0+=(R()-0.3)*50;cy0+=(R()-0.5)*40;c.push([cx0,cy0]);}cons.push(c);}
+  var st=[];for(i=0;i<420;i++)st.push([R()*w,R()*h,0.4+R()*1.3,R()]);var big=[];for(i=0;i<26;i++)big.push([R()*w,R()*h,3+R()*5]);
+  [-w,0,w].forEach(function(o){
+    nb.forEach(function(n){var g2=x.createRadialGradient(n[0]+o,n[1],0,n[0]+o,n[1],n[2]);g2.addColorStop(0,n[3][0]);g2.addColorStop(1,'rgba(0,0,0,0)');x.globalAlpha=n[3][1]*(em?0.45:1);x.fillStyle=g2;x.fillRect(n[0]+o-n[2],n[1]-n[2],n[2]*2,n[2]*2);});x.globalAlpha=1;
+    // 銀河光帶：先一層柔光，再撒很多細星
+    x.save();x.globalAlpha=em?0.35:0.28;x.strokeStyle='#cfd8ff';x.lineWidth=46;x.lineCap='round';x.beginPath();for(var q=0;q<=40;q++){var u=q/40,px=u*w+o,py=h*(0.85-u*0.7)+Math.sin(u*9)*24;if(q)x.lineTo(px,py);else x.moveTo(px,py);}x.stroke();x.globalAlpha=em?0.5:0.35;x.lineWidth=16;x.strokeStyle='#ffffff';x.stroke();x.restore();
+    band.forEach(function(p){x.fillStyle='rgba(255,255,255,'+(0.5+p[3]*0.5)+')';x.beginPath();x.arc(p[0]+o,p[1],p[2],0,6.3);x.fill();});
+    cons.forEach(function(c){x.strokeStyle=em?'rgba(200,220,255,.9)':'rgba(214,226,255,.85)';x.lineWidth=1.6;x.beginPath();c.forEach(function(p,j){if(j)x.lineTo(p[0]+o,p[1]);else x.moveTo(p[0]+o,p[1]);});x.stroke();c.forEach(function(p){gxStar4(x,p[0]+o,p[1],3.5,'rgba(190,215,255,.9)');});});
+    st.forEach(function(p){x.fillStyle=p[3]<0.15?'#ffe9a8':'rgba(255,255,255,'+(0.4+p[3]*0.6)+')';x.beginPath();x.arc(p[0]+o,p[1],p[2],0,6.3);x.fill();});
+    big.forEach(function(p){gxStar4(x,p[0]+o,p[1],p[2],'rgba(170,200,255,.8)');});
+  });
+}
+// 星光內裙：銀白到星藍，銀色流光、細星，正面交疊線與下襬層次
+function gxInnerPaint(x,w,h,em){
+  var R=rng(17),i;
+  if(em){x.fillStyle='#000';x.fillRect(0,0,w,h);}else{var g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'#f6f8ff');g.addColorStop(0.5,'#d6deff');g.addColorStop(0.85,'#9aaeff');g.addColorStop(1,'#6f7dff');x.fillStyle=g;x.fillRect(0,0,w,h);}
+  for(i=0;i<9;i++){var y0=h*(0.3+i*0.075);x.beginPath();for(var px=0;px<=w;px+=8){var py=y0+Math.sin(px/w*Math.PI*6+i*1.3)*7;if(px)x.lineTo(px,py);else x.moveTo(px,py);}x.strokeStyle=em?'rgba(170,190,255,.4)':'rgba(255,255,255,.9)';x.lineWidth=2;x.stroke();}
+  for(i=0;i<260;i++){x.fillStyle=em?'rgba(220,230,255,.9)':'rgba(120,140,255,.7)';x.beginPath();x.arc(R()*w,R()*h,0.5+R()*1.2,0,6.3);x.fill();}
+  for(i=0;i<22;i++)gxStar4(x,R()*w,R()*h,2+R()*3,em?'rgba(200,220,255,.9)':'rgba(120,150,255,.7)');
+  if(!em){[['#ffffff',0],['#5a6cff',7],['#c8d4ff',12],['#8f6bd8',16]].forEach(function(q){x.fillStyle=q[0];x.beginPath();x.moveTo(q[1],0);x.lineTo(q[1]+6,0);x.lineTo(q[1]+40,h);x.lineTo(q[1]+34,h);x.fill();});
+    [['#8f6bd8',22],['#ffffff',16],['#c8d4ff',11],['#3b2bb8',7]].forEach(function(q){x.fillStyle=q[0];x.fillRect(0,h-q[1],w,q[1]);});}
+  else{x.fillStyle='#bfd2ff';x.fillRect(0,h-11,w,4);}
+}
+// 長髮：銀白到星藍，一根根髮絲，髮尾有星光
+function gxHairPaint(x,w,h,em){
+  var R=rng(23),i;
+  if(em){var e=x.createLinearGradient(0,0,0,h);e.addColorStop(0,'#000');e.addColorStop(0.45,'#000');e.addColorStop(0.75,'#2a3aa0');e.addColorStop(1,'#7a9cff');x.fillStyle=e;x.fillRect(0,0,w,h);}
+  else{var g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'#f2f4ff');g.addColorStop(0.3,'#dde3ff');g.addColorStop(0.62,'#a9b6ff');g.addColorStop(0.85,'#7488ff');g.addColorStop(1,'#5a5cf0');x.fillStyle=g;x.fillRect(0,0,w,h);
+    for(i=0;i<190;i++){var x0=R()*w,a=0.15+R()*0.35;x.strokeStyle=R()<0.45?'rgba(255,255,255,'+a+')':'rgba(70,80,190,'+(a*0.7)+')';x.lineWidth=0.6+R()*1.4;x.beginPath();x.moveTo(x0,0);x.bezierCurveTo(x0+(R()-0.5)*14,h*0.33,x0+(R()-0.5)*14,h*0.66,x0+(R()-0.5)*10,h);x.stroke();}
+    var sh=x.createLinearGradient(0,h*0.08,0,h*0.16);sh.addColorStop(0,'rgba(255,255,255,0)');sh.addColorStop(0.5,'rgba(255,255,255,.55)');sh.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=sh;x.fillRect(0,h*0.08,w,h*0.08);}
+  for(i=0;i<70;i++){var yy=h*(0.55+R()*0.45);x.fillStyle=em?'#e6efff':'rgba(255,255,255,.9)';x.beginPath();x.arc(R()*w,yy,0.6+R()*1.3,0,6.3);x.fill();}
+  for(i=0;i<10;i++)gxStar4(x,R()*w,h*(0.65+R()*0.33),2+R()*2.5,'rgba(190,215,255,.9)');
+}
+function gxTexs(){
+  var Rb=skCan('gxRobe',512,512,function(x,w,h){gxRobePaint(x,w,h,false);}),RE=skCan('gxRobeE',512,512,function(x,w,h){gxRobePaint(x,w,h,true);});
+  var I=skCan('gxIn',512,512,function(x,w,h){gxInnerPaint(x,w,h,false);}),IE=skCan('gxInE',512,512,function(x,w,h){gxInnerPaint(x,w,h,true);});
+  var Hh=skCan('gxHair',256,512,function(x,w,h){gxHairPaint(x,w,h,false);}),HE=skCan('gxHairE',256,512,function(x,w,h){gxHairPaint(x,w,h,true);});
+  return {robe:skTx('gx_robe',Rb,2,1,false),robeE:skTx('gx_robeE',RE,2,1,false),inner:skTx('gx_in',I,1,1,false),innerE:skTx('gx_inE',IE,1,1,false),
+    slv:skTx('gx_slv',Rb,1,1,false),slvE:skTx('gx_slvE',RE,1,1,false),hair:skTx('gx_hair',Hh,3,1,false),hairE:skTx('gx_hairE',HE,3,1,false),
+    star:skTx('gx_star',skCan('gxStar',64,64,function(x){gxStar4(x,32,32,18,'rgba(170,205,255,.9)');}),1,1),
+    stole:skTx('gx_stole',skCan('gxStole',256,64,function(x,w,h){var g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'rgba(220,232,255,.95)');g.addColorStop(0.08,'rgba(90,110,255,.75)');g.addColorStop(0.5,'rgba(40,30,140,.6)');g.addColorStop(0.92,'rgba(90,110,255,.75)');g.addColorStop(1,'rgba(220,232,255,.95)');x.fillStyle=g;x.fillRect(0,0,w,h);
+      var R=rng(4);for(var i=0;i<140;i++){x.fillStyle='rgba(255,255,255,'+(0.5+R()*0.5)+')';x.beginPath();x.arc(R()*w,6+R()*(h-12),0.5+R()*1.2,0,6.3);x.fill();}for(i=0;i<8;i++)gxStar4(x,R()*w,12+R()*(h-24),2.5+R()*2,'rgba(190,215,255,.9)');}),3,1),
+    halo:skTx('gx_halo',skCan('gxHalo',256,256,function(x,w,h){var c=w/2,g=x.createRadialGradient(c,c,0,c,c,c);g.addColorStop(0,'rgba(120,140,255,0)');g.addColorStop(0.5,'rgba(110,120,255,.15)');g.addColorStop(0.72,'rgba(140,170,255,.6)');g.addColorStop(0.79,'rgba(235,242,255,.95)');g.addColorStop(0.86,'rgba(160,120,255,.5)');g.addColorStop(1,'rgba(120,100,255,0)');x.fillStyle=g;x.fillRect(0,0,w,h);
+      x.translate(c,c);x.strokeStyle='rgba(235,242,255,.8)';x.lineWidth=2;for(var i=0;i<48;i++){x.rotate(Math.PI/24);x.beginPath();x.moveTo(0,-c*0.66);x.lineTo(0,-c*(i%4?0.69:0.73));x.stroke();}
+      for(i=0;i<16;i++){x.rotate(Math.PI/8);var lg=x.createLinearGradient(0,0,0,-c);lg.addColorStop(0,'rgba(200,220,255,0)');lg.addColorStop(0.6,'rgba(200,220,255,.2)');lg.addColorStop(1,'rgba(200,220,255,0)');x.fillStyle=lg;x.beginPath();x.moveTo(-3,0);x.lineTo(0,-c);x.lineTo(3,0);x.fill();}
+      var R=rng(6);for(i=0;i<90;i++){var a=R()*6.3,r=c*(0.4+R()*0.58);x.fillStyle='rgba(255,255,255,'+(0.5+R()*0.5)+')';x.beginPath();x.arc(Math.cos(a)*r,Math.sin(a)*r,0.6+R()*1.5,0,6.3);x.fill();}}),1,1)};
+}
+function gxCrescent(r,inner,off,d){var s=new THREE.Shape();s.absarc(0,0,r,Math.PI*0.28,Math.PI*1.72,false);s.absarc(off,0,inner,Math.PI*1.6,Math.PI*0.4,true);return d?new THREE.ExtrudeGeometry(s,{depth:d,bevelEnabled:true,bevelSize:d*0.4,bevelThickness:d*0.4,bevelSegments:2,curveSegments:24}):new THREE.ShapeGeometry(s,24);}
+function buildGalaxy(H){
+  var T=gxTexs(),i;
+  var rm=M_(H,0xffffff,{map:T.robe,emissive:0xffffff,emissiveMap:T.robeE,emissiveIntensity:.85,roughness:.38,metalness:.1,side:THREE.DoubleSide});H.glow.push([rm,.85]);
+  var im=M_(H,0xffffff,{map:T.inner,emissive:0xffffff,emissiveMap:T.innerE,emissiveIntensity:.5,roughness:.35,metalness:.15,side:THREE.DoubleSide});H.glow.push([im,.5]);
+  var sil=M_(H,0xeef2ff,{metalness:.85,roughness:.16,emissive:0x2a3a80,emissiveIntensity:.6}),deep=M_(H,0x2a1f7a,{roughness:.3,metalness:.3}),wht=M_(H,0xffffff);
+  var slm=new THREE.MeshStandardMaterial({map:T.slv,emissive:0xffffff,emissiveMap:T.slvE,emissiveIntensity:1,transparent:true,opacity:.94,side:THREE.DoubleSide,depthWrite:false,roughness:.35});H.glow.push([slm,1]);H.mats.push(slm);
+  H.gxM=rm;
+  setLimbs(H,{ch:im,cl:sil,ua:rm,fa:rm,pv:im,th:im,sh:im,ft:sil});
+  // 內裙＋前開的星空外袍（後面拖地）＋銀色滾邊＋星珠
+  mkSkirt(H,sg('skIn',function(){return skLathe([[0.17,0],[0.2,-0.2],[0.25,-0.45],[0.305,-0.655]],48,0,Math.PI*2,function(th,t){return [1+Math.sin(th*5)*0.006*t,0];});}),im,0.085);
+  var tul=new THREE.Mesh(sg('gxTul',function(){return skLathe([[0.18,-0.04],[0.24,-0.25],[0.3,-0.45],[0.335,-0.64]],48,-0.55,1.1,function(th,t){return [1+Math.sin(th*14)*0.02*t,0];});}),M_(H,0xc8d6ff,{transparent:true,opacity:.35,emissive:0x6a7cff,emissiveIntensity:.7,side:THREE.DoubleSide,depthWrite:false}));H.skirt.add(tul);
+  var PH0=0.5,PHL=Math.PI*2-1.0;
+  var ug=new THREE.Mesh(sg('skUchi',function(){return skLathe(SK_UPROF,72,PH0,PHL,skUfn);}),rm);ug.castShadow=true;H.skirt.add(ug);
+  var hem=[],edge=[[],[]];for(i=0;i<=56;i++)hem.push(skProfAt(SK_UPROF,skUfn,PH0+PHL*i/56,1));
+  for(i=0;i<=12;i++){var t=i/12;edge[0].push(skProfAt(SK_UPROF,skUfn,PH0,t));edge[1].push(skProfAt(SK_UPROF,skUfn,PH0+PHL,t));}
+  H.skirt.add(new THREE.Mesh(sg('skFuki',function(){return skTube(hem,0.024);}),deep));
+  var hem2=hem.map(function(p){return new THREE.Vector3(p.x*1.04,p.y+0.026,p.z*1.04);});H.skirt.add(new THREE.Mesh(sg('skFuki2',function(){return skTube(hem2,0.008);}),sil));
+  H.skirt.add(new THREE.Mesh(sg('skEdgeA',function(){return skTube(edge[0],0.02);}),sil));H.skirt.add(new THREE.Mesh(sg('skEdgeB',function(){return skTube(edge[1],0.02);}),sil));
+  var bead=glowM(H,0xdfe9ff,1,true);for(i=2;i<56;i+=4){var bd=new THREE.Mesh(sg('gxBead',function(){return new THREE.OctahedronGeometry(0.016);}),bead);bd.position.copy(hem[i]);bd.position.y+=0.03;H.skirt.add(bd);}
+  // 銀色星光腰帶＋大星星扣＋垂下的星鍊
+  part(H,H.torso,sg('gxBelt',function(){var q=new THREE.CylinderGeometry(0.198,0.194,0.07,28,1,true);q.scale(1,1,0.76);return q;}),deep,0,0.08,0);
+  [0.115,0.045].forEach(function(y){part(H,H.torso,sg('gxBR',function(){var q=new THREE.TorusGeometry(0.2,0.008,5,32);q.rotateX(Math.PI/2);q.scale(1,1,0.76);return q;}),sil,0,y,0);});
+  part(H,H.torso,sg('gxBuck',function(){return star5(0.05,0.022,0.014);}),sil,0,0.08,0.15);part(H,H.torso,sg('gxGem',function(){return new THREE.OctahedronGeometry(0.02);}),glowM(H,0x9fc4ff,1,true),0,0.08,0.175);
+  for(i=0;i<5;i++){var dg=new THREE.Group();dg.position.set((i-2)*0.045,0.05,0.152-Math.abs(i-2)*0.012);var L=0.08+(2-Math.abs(i-2))*0.04;
+    dg.add(new THREE.Mesh(sg('gxCh'+L,function(){var q=new THREE.CylinderGeometry(0.0025,0.0025,L,4);q.translate(0,-L/2,0);return q;}),sil));
+    var ss=new THREE.Mesh(sg('gxCS',function(){return star5(0.018,0.008,0.004);}),glowM(H,i%2?0xbfe0ff:0xfff4c0,1,true));ss.position.y=-L-0.012;dg.add(ss);addTo(H,H.torso,dg);H.anim.push({k:'flut',o:dg,ph:i*0.9,b:0.05,amp:0.15});}
+  // 長薄紗袖：星空薄紗，袖口一圈銀邊和星珠
+  H.A.forEach(function(a){var sv=new THREE.Group();sv.position.y=-0.02;
+    var bl=new THREE.Mesh(sg('gxBell',function(){return skLathe([[0.055,0.02],[0.1,-0.18],[0.17,-0.36],[0.21,-0.46]],32,0,Math.PI*2,function(th,t){return [1+Math.sin(th*6)*0.05*t,-t*t*0.06*(1-Math.cos(th))/2];});}),slm);sv.add(bl);
+    var rim=[];for(var j=0;j<=32;j++)rim.push(skProfAt([[0.055,0.02],[0.1,-0.18],[0.17,-0.36],[0.21,-0.46]],function(th,t){return [1+Math.sin(th*6)*0.05*t,-t*t*0.06*(1-Math.cos(th))/2];},j/32*Math.PI*2,1));
+    sv.add(new THREE.Mesh(sg('gxBellR',function(){return skTube(rim,0.008,true);}),sil));
+    for(j=0;j<8;j++){var b2=new THREE.Mesh(sg('gxBead',function(){return new THREE.OctahedronGeometry(0.016);}),bead);b2.position.copy(rim[j*4]);b2.position.y-=0.012;sv.add(b2);}
+    addTo(H,a.el,sv);H.anim.push({k:'slv',o:sv,sd:a.sd});
+    part(H,a.sh,sg('skShoulder',function(){return cylG(0.082,0.078,0.25,12,-0.11);}),rm,0,0,0);});
+  // 銀河披帛
+  skHagoromo(H,T.stole,true);
+  // 繞著身體轉的兩圈星環＋小行星
+  [[0.56,0.35,0.5,0.9],[0.62,-0.1,-0.4,-0.6]].forEach(function(q,k){var orb=new THREE.Group();orb.position.y=q[1];orb.rotation.set(q[2],0,0.2);
+    var ring=new THREE.Mesh(sg('orbR',function(){var t2=new THREE.TorusGeometry(1,0.006,4,64);t2.rotateX(Math.PI/2);return t2;}),glowM(H,0x9fc4ff,0.7,true));ring.scale.setScalar(q[0]);orb.add(ring);
+    for(var j=0;j<6;j++){var a3=j/6*Math.PI*2,st=new THREE.Mesh(sg('orbS',function(){return new THREE.OctahedronGeometry(0.03);}),glowM(H,j%2?0xfff4c0:0xb8d4ff,1,true));st.position.set(Math.cos(a3)*q[0],0,Math.sin(a3)*q[0]);orb.add(st);}
+    var pl=new THREE.Mesh(sg('gxPl',function(){return new THREE.SphereGeometry(0.045,16,12);}),M_(H,k?0x9b6bff:0x5ab0ff,{emissive:k?0x5a2bd8:0x1f6ad8,emissiveIntensity:.8,roughness:.3}));pl.position.set(-q[0],0,0);orb.add(pl);
+    var pr=new THREE.Mesh(sg('gxPlR',function(){var t2=new THREE.TorusGeometry(0.075,0.006,4,32);t2.rotateX(Math.PI/2.4);return t2;}),glowM(H,0xe8eeff,0.9,true));pr.position.copy(pl.position);orb.add(pr);
+    addTo(H,H.hips,orb);H.anim.push({k:'spin',o:orb,w:q[3]});});
+  // 背後的新月星盤光輪
+  var hl=new THREE.Group();hl.position.set(0,0.52,-0.5);
+  var disc=new THREE.Mesh(sg('skHalo',function(){return new THREE.PlaneGeometry(1.05,1.05);}),new THREE.MeshBasicMaterial({map:T.halo,transparent:true,depthWrite:false,side:THREE.DoubleSide}));H.mats.push(disc.material);hl.add(disc);
+  var ringG=new THREE.Group();hl.add(ringG);var sm2=new THREE.MeshBasicMaterial({map:T.star,transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});H.mats.push(sm2);
+  for(i=0;i<12;i++){var a4=i/12*Math.PI*2,sb=new THREE.Mesh(sg('gxHS',function(){return new THREE.PlaneGeometry(0.12,0.12);}),sm2);sb.position.set(Math.cos(a4)*0.42,Math.sin(a4)*0.42,0.01);ringG.add(sb);H.anim.push({k:'twk',o:sb,ph:i*0.9,s0:i%3?0.8:1.3});}
+  ringG.add(new THREE.Mesh(sg('skHR',function(){return new THREE.TorusGeometry(0.42,0.006,4,64);}),glowM(H,0xdfe9ff,1)));
+  var moon=new THREE.Mesh(sg('gxMoon',function(){return gxCrescent(0.2,0.165,0.08,0.02);}),M_(H,0xfff2c8,{emissive:0xffe08a,emissiveIntensity:.9,metalness:.3,roughness:.3}));moon.position.set(0.04,0.06,0.03);moon.rotation.z=-0.5;hl.add(moon);
+  addTo(H,H.torso,hl);H.anim.push({k:'rotZ',o:ringG,w:0.2});H.anim.push({k:'rotZ',o:disc,w:-0.08});H.anim.push({k:'bob',o:moon,b:0.06});
+  // 身邊一閃一閃的星星
+  var orb2=new THREE.Group();orb2.position.y=0.1;
+  for(i=0;i<16;i++){var a5=i*2.4,y=-0.55+i*0.09,r=0.48+(i%3)*0.08,ps=new THREE.Mesh(sg('gxOS',function(){return new THREE.PlaneGeometry(0.09,0.09);}),sm2);ps.position.set(Math.cos(a5)*r,y,Math.sin(a5)*r);orb2.add(ps);H.anim.push({k:'twk',o:ps,ph:i*1.3,s0:0.6+(i%4)*0.25,face:1});}
+  addTo(H,H.hips,orb2);H.anim.push({k:'spin',o:orb2,w:-0.4});
+  // 沒有戴配套髮型時：頭上一個小新月
+  var mc=new THREE.Mesh(sg('cres',function(){var s=new THREE.Shape();s.absarc(0,0,0.14,Math.PI*0.3,Math.PI*1.7,false);s.absarc(0.06,0,0.11,Math.PI*1.62,Math.PI*0.38,true);return new THREE.ShapeGeometry(s,24);}),glowM(H,0xfff0b8,1,true));mc.position.set(0,0.42,-0.2);mc.rotation.z=-0.6;addTo(H,H.head,mc);H.anim.push({k:'bob',o:mc,b:0.42});H.kz=mc;
+  H.hairOv={c:0xc8d4ff,e:0x1a2260};
+}
+function topGalaxy(H){
+  var T=gxTexs();
+  var ct=bodTex('bodG2',function(x,w,h,cx){x.drawImage(SKC.gxRobe,0,0,512,170,0,0,w,h);
+    x.lineJoin='round';[[60,'#c8d4ff',14],[52,'#3b2bb8',8],[46,'#eef2ff',5],[40,'#8f6bd8',10]].forEach(function(q){x.beginPath();x.moveTo(cx-q[0],-4);x.quadraticCurveTo(cx-q[0]*0.25,50,cx,92);x.quadraticCurveTo(cx+q[0]*0.25,50,cx+q[0],-4);x.strokeStyle=q[1];x.lineWidth=q[2];x.stroke();});
+    var g=x.createLinearGradient(0,0,0,80);g.addColorStop(0,'#f4f6ff');g.addColorStop(1,'#b8c6ff');x.fillStyle=g;x.beginPath();x.moveTo(cx-34,0);x.quadraticCurveTo(cx-9,46,cx,80);x.quadraticCurveTo(cx+9,46,cx+34,0);x.fill();
+    var R=rng(2);for(var i=0;i<40;i++){x.fillStyle='rgba(110,130,255,.8)';x.beginPath();x.arc(cx+(R()-0.5)*44,R()*70,0.6+R(),0,6.3);x.fill();}});
+  var cm=M_(H,0xffffff,{map:ct,emissive:0xffffff,emissiveMap:ct,emissiveIntensity:.35,roughness:.35});H.ms.ch.material=cm;H.glow.push([cm,.35]);
+  var Tt=H.torso,sil=M_(H,0xeef2ff,{metalness:.85,roughness:.16,emissive:0x2a3a80,emissiveIntensity:.6});
+  // 銀色新月肩飾、高立領、胸前的星形胸針＋垂鍊
+  [-1,1].forEach(function(sd){for(var j=0;j<5;j++){var a=(j-2)*0.5;part(H,Tt,sg('gxShS',function(){return star5(0.016,0.007,0.004);}),glowM(H,j%2?0xbfe0ff:0xfff4c0,1,true),sd*0.24+Math.sin(a)*0.06,0.49,Math.cos(a)*0.06,-Math.PI/2+0.3,0,0);}});
+  part(H,Tt,sg('gxCol',function(){return new THREE.CylinderGeometry(0.115,0.1,0.11,20,1,true,Math.PI*0.62,Math.PI*0.76);}),sil,0,0.5,0);
+  part(H,Tt,sg('gxColS',function(){return new THREE.CylinderGeometry(0.12,0.12,0.012,20,1,true,Math.PI*0.62,Math.PI*0.76);}),glowM(H,0xbfe0ff,1,true),0,0.555,0);
+  part(H,Tt,sg('gxBro',function(){return star5(0.045,0.02,0.012);}),sil,0,0.34,0.14);part(H,Tt,sg('gxBroG',function(){return new THREE.OctahedronGeometry(0.018);}),glowM(H,0xfff4c0,1,true),0,0.34,0.162);
+  [-1,1].forEach(function(sd){part(H,Tt,sg('gxNC',function(){var q=new THREE.TorusGeometry(0.11,0.0035,4,24,Math.PI*0.5);return q;}),sil,0,0.46,0.07,-0.35,0,sd>0?-Math.PI*0.5:-Math.PI);});
+}
+// 配套髮型：銀河星光長髮・極（長長的髮簾、髮尾星光、新月星冠、額前星鍊、星星髮夾）
+function hairGalaxy(H,g,hm,capM,sp){
+  if(H.kz)H.kz.visible=false;
+  var T=gxTexs();
+  var hmM=M_(H,0xffffff,{map:T.hair,emissive:0xffffff,emissiveMap:T.hairE,emissiveIntensity:.9,roughness:.32,metalness:.1,side:THREE.DoubleSide});H.glow.push([hmM,.9]);
+  var sv=hm(0xe6eaff,{emissive:0x1a2260,emissiveIntensity:.3,roughness:.22,metalness:.18});capM(sv);
+  sp(sg('hbang',function(){return new THREE.CylinderGeometry(0.214,0.222,0.1,24,1,true,-1.15,2.3);}),sv,0,0.315,0);
+  [[-0.1,0.3,0.14,0.25],[0,0.315,0.15,0],[0.1,0.3,0.14,-0.25]].forEach(function(q){sp(sg('hlock',function(){var s=new THREE.SphereGeometry(0.078,12,8);s.scale(1.15,0.62,0.62);return s;}),sv,q[0],q[1],q[2],0.5,0,q[3]);});
+  // 背後的長髮簾（從頭頂一直垂到腰下，髮尾一束一束）
+  var cur=new THREE.Group();cur.position.set(0,0.2,-0.01);g.add(cur);
+  var cm=new THREE.Mesh(sg('gxCurtain2',function(){return skLathe([[0.236,0.04],[0.226,-0.1],[0.225,-0.28],[0.245,-0.52],[0.262,-0.76],[0.25,-0.94]],64,Math.PI/2+0.05,Math.PI-0.1,function(th,t){var b=(1-Math.cos(th))/2,tip=Math.pow(t,6);return [1+Math.sin(th*14)*0.035*Math.min(1,t*3)+Math.sin(th*5)*0.03*t,-tip*(0.06+0.18*b*b)-tip*0.07*Math.abs(Math.sin(th*9))];});}),hmM);cm.scale.z=1.25;cm.castShadow=true;cur.add(cm);
+  // 疊在上面的三片長髮（長度不一樣，看起來一層一層）
+  [[Math.PI-0.55,0.5,-0.82,0.9],[Math.PI+0.05,0.55,-1.0,1.1],[Math.PI+0.6,0.5,-0.78,0.8]].forEach(function(q,k){var lg=new THREE.Group();cur.add(lg);
+    var pm=new THREE.Mesh(sg('gxLay'+k,function(){return skLathe([[0.244,0.0],[0.236,-0.14],[0.24,-0.34],[0.262,q[2]*0.65],[0.27,q[2]]],24,q[0]-q[1]/2,q[1],function(th,t){var tip=Math.pow(t,4);return [1+Math.sin(th*16)*0.03*t,-tip*0.12*(1-Math.abs(Math.sin((th-q[0])/q[1]*Math.PI)))];});}),hmM);pm.scale.z=1.25;lg.add(pm);H.anim.push({k:'hcur',o:lg,s:q[3]});});
+  H.anim.push({k:'hcur',o:cur});
+  // 臉旁兩束長側髮
+  [-1,1].forEach(function(sd){var sl=new THREE.Group();sl.position.set(sd*0.17,0.25,0.07);g.add(sl);
+    sl.add(new THREE.Mesh(sg('gxSide',function(){var q=skLathe([[0.045,0],[0.05,-0.2],[0.04,-0.45],[0.012,-0.62]],12,0,Math.PI*2,function(th,t){return [1,0];});q.scale(0.5,1,1.2);return q;}),hmM));
+    H.anim.push({k:'hcur',o:sl,s:0.6});});
+  // 新月星冠
+  var cr=new THREE.Group();cr.position.set(0,0.4,0.03);cr.rotation.x=-0.3;g.add(cr);
+  var silv=M_(H,0xeef2ff,{metalness:.9,roughness:.14,emissive:0x2a3a80,emissiveIntensity:.5});
+  cr.add(new THREE.Mesh(sg('gxTi',function(){var q=new THREE.TorusGeometry(0.2,0.008,6,40,Math.PI*0.9);q.rotateZ(Math.PI*0.05);q.rotateX(-Math.PI/2);q.scale(1,1,0.92);return q;}),silv));
+  var mn=new THREE.Mesh(sg('gxTiM',function(){return gxCrescent(0.07,0.058,0.03,0.012);}),M_(H,0xfff2c8,{emissive:0xffe08a,emissiveIntensity:.8,metalness:.3,roughness:.3}));mn.position.set(0,0.06,0.2);mn.rotation.z=Math.PI/2;cr.add(mn);
+  var gem=new THREE.Mesh(sg('gxTiG',function(){return new THREE.OctahedronGeometry(0.022);}),glowM(H,0x9fc4ff,1,true));gem.position.set(0,0.06,0.205);cr.add(gem);
+  for(var i=0;i<7;i++){var a=Math.PI*0.5+(i-3)*0.32,st=new THREE.Mesh(sg('gxTiS',function(){return star5(0.022,0.009,0.005);}),glowM(H,i%2?0xbfe0ff:0xfff4c0,1,true));st.position.set(Math.cos(a)*0.2,0.012+(3-Math.abs(i-3))*0.008,Math.sin(a)*0.184);st.rotation.y=Math.PI/2-a;cr.add(st);}
+  // 額前垂下的星鍊
+  for(i=0;i<3;i++){var dg=new THREE.Group();dg.position.set((i-1)*0.05,0.33,0.19-Math.abs(i-1)*0.01);var L=i===1?0.07:0.045;
+    dg.add(new THREE.Mesh(sg('gxCh'+L,function(){var q=new THREE.CylinderGeometry(0.0025,0.0025,L,4);q.translate(0,-L/2,0);return q;}),silv));
+    var dd=new THREE.Mesh(sg('gxTd',function(){return new THREE.OctahedronGeometry(0.012);}),glowM(H,0xdfe9ff,1,true));dd.position.y=-L-0.008;dg.add(dd);g.add(dg);H.anim.push({k:'flut',o:dg,ph:i,b:0,amp:0.15});}
+  // 兩側的星星髮夾＋從髮夾垂下的星光細鍊
+  [-1,1].forEach(function(sd){var cl=new THREE.Group();cl.position.set(sd*0.2,0.33,-0.02);cl.rotation.y=sd*1.2;g.add(cl);
+    [[0,0,0.035],[0.035,-0.03,0.024],[-0.03,-0.035,0.02]].forEach(function(q,j){var s=new THREE.Mesh(sg('gxPin'+j,function(){return star5(q[2],q[2]*0.42,0.008);}),glowM(H,j%2?0xbfe0ff:0xfff4c0,1,true));s.position.set(q[0],q[1],0.01);cl.add(s);});
+    for(var k=0;k<3;k++){var ch=new THREE.Group();ch.position.set(-0.02+k*0.02,-0.04,0.01);var L2=0.12+k*0.04;ch.add(new THREE.Mesh(sg('gxCh'+L2,function(){var q=new THREE.CylinderGeometry(0.002,0.002,L2,4);q.translate(0,-L2/2,0);return q;}),silv));
+      var dd2=new THREE.Mesh(sg('gxTd',function(){return new THREE.OctahedronGeometry(0.012);}),glowM(H,0xbfe0ff,1,true));dd2.position.y=-L2-0.008;ch.add(dd2);cl.add(ch);H.anim.push({k:'flut',o:ch,ph:k+sd,b:0,amp:0.2});}});
+}
+// ───────── 手持道具（抽到限定服裝附贈，可以拿也可以不拿） ─────────
+function propWagasa(H){
+  var T=skTexs(),gold=M_(H,0xf2c230,{metalness:.75,roughness:.22,emissive:0x5a3500}),crim=M_(H,0xb0124f,{roughness:.35,metalness:.1}),i;
+  var umb=new THREE.Group();umb.position.set(0,-0.02,0.02);umb.rotation.set(-0.55,0,-0.38);
+  umb.add(new THREE.Mesh(sg('umh2',function(){var q=new THREE.CylinderGeometry(0.008,0.008,1.1,6);q.translate(0,0.5,0);return q;}),M_(H,0x5d3a1a,{roughness:.35})));
+  part(H,umb,sg('skGrip',function(){var q=new THREE.CylinderGeometry(0.013,0.013,0.16,8);q.translate(0,0.02,0);return q;}),crim,0,0,0);
+  var can=new THREE.Mesh(sg('skCan',function(){var q=new THREE.ConeGeometry(0.44,0.17,32,1,true);q.translate(0,1.06,0);return q;}),M_(H,0xffffff,{map:T.umb,emissive:0xffb3cf,emissiveIntensity:.18,roughness:.6,side:THREE.DoubleSide}));can.castShadow=true;umb.add(can);
+  umb.add(new THREE.Mesh(sg('skUrim',function(){var q=new THREE.TorusGeometry(0.44,0.007,5,48);q.rotateX(Math.PI/2);q.translate(0,0.975,0);return q;}),gold));
+  for(i=0;i<16;i++){var rb=new THREE.Mesh(sg('skRib',function(){var q=new THREE.CylinderGeometry(0.003,0.003,0.36,3);q.rotateZ(Math.PI/2);q.translate(0.2,0,0);return q;}),M_(H,0x8a5a2b));rb.position.y=0.92;rb.rotation.set(0,i*Math.PI/8,0.42);umb.add(rb);}
+  umb.add(new THREE.Mesh(sg('skUtop',function(){var q=new THREE.CylinderGeometry(0.03,0.045,0.04,12);q.translate(0,1.15,0);return q;}),crim));
+  part(H,umb,sg('skUknob',function(){return new THREE.SphereGeometry(0.022,10,8);}),gold,0,1.18,0);
+  for(i=0;i<4;i++){var a2=i*Math.PI/2+0.4,dt=new THREE.Group();dt.position.set(Math.cos(a2)*0.44,0.975,Math.sin(a2)*0.44);dt.add(new THREE.Mesh(sg('kzc2',function(){var q=new THREE.CylinderGeometry(0.003,0.003,0.1,4);q.translate(0,-0.05,0);return q;}),gold));
+    var bl=new THREE.Mesh(sg('skBell',function(){return new THREE.SphereGeometry(0.016,10,8);}),gold);bl.position.y=-0.11;dt.add(bl);var bt=new THREE.Mesh(sg('skTas',function(){var q=new THREE.CylinderGeometry(0.004,0.016,0.075,8);q.translate(0,-0.05,0);return q;}),crim);bt.position.y=-0.11;dt.add(bt);
+    umb.add(dt);H.anim.push({k:'flut',o:dt,ph:i*1.3,b:0,amp:0.22});}
+  addTo(H,H.A[0].hand,umb);
+}
+function propMoon(H){ // 新月權杖：銀色長杖、頂端大新月抱著發光星球、垂下星鍊、旁邊繞一圈小星環
+  var sil=M_(H,0xeef2ff,{metalness:.9,roughness:.14,emissive:0x2a3a80,emissiveIntensity:.5}),i;
+  var st=new THREE.Group();st.position.set(0,-0.02,0.02);st.rotation.set(-0.25,0,-0.12);
+  st.add(new THREE.Mesh(sg('gxStaff',function(){var q=new THREE.CylinderGeometry(0.011,0.009,1.05,8);q.translate(0,0.3,0);return q;}),sil));
+  [0.05,0.62,0.8].forEach(function(y){part(H,st,sg('gxStR',function(){var q=new THREE.TorusGeometry(0.016,0.005,5,12);q.rotateX(Math.PI/2);return q;}),sil,0,y,0);});
+  part(H,st,sg('gxStT',function(){return new THREE.ConeGeometry(0.012,0.06,6);}),sil,0,-0.25,0,Math.PI,0,0);
+  var top=new THREE.Group();top.position.y=0.92;st.add(top);
+  var mn=new THREE.Mesh(sg('gxPMoon',function(){var q=gxCrescent(0.12,0.1,0.045,0.016);q.translate(0,0,-0.008);return q;}),M_(H,0xfff2c8,{emissive:0xffe08a,emissiveIntensity:.85,metalness:.4,roughness:.25}));mn.rotation.z=-Math.PI/2;top.add(mn);
+  var orbm=new THREE.Mesh(sg('gxOrb',function(){return new THREE.SphereGeometry(0.045,18,14);}),M_(H,0xbfd4ff,{emissive:0x5a7cff,emissiveIntensity:1.1,roughness:.1,metalness:.2,transparent:true,opacity:.92}));orbm.position.y=0.03;top.add(orbm);H.glow.push([orbm.material,1.1]);
+  var tip=new THREE.Mesh(sg('gxTip',function(){return star5(0.04,0.017,0.01);}),glowM(H,0xfff4c0,1,true));tip.position.y=0.16;top.add(tip);H.anim.push({k:'spinZ',o:tip});
+  var rg=new THREE.Group();rg.position.y=0.03;rg.rotation.x=0.5;top.add(rg);rg.add(new THREE.Mesh(sg('gxPR',function(){var q=new THREE.TorusGeometry(0.085,0.003,4,40);q.rotateX(Math.PI/2);return q;}),glowM(H,0xdfe9ff,0.9,true)));
+  for(i=0;i<4;i++){var s=new THREE.Mesh(sg('orbS',function(){return new THREE.OctahedronGeometry(0.03);}),glowM(H,i%2?0xfff4c0:0xb8d4ff,1,true));s.scale.setScalar(0.5);var a=i*Math.PI/2;s.position.set(Math.cos(a)*0.085,0,Math.sin(a)*0.085);rg.add(s);}
+  H.anim.push({k:'spin',o:rg,w:1.6});
+  for(i=0;i<3;i++){var dg=new THREE.Group();dg.position.set((i-1)*0.05,-0.06,0);var L=0.08+(i===1?0.05:0);dg.add(new THREE.Mesh(sg('gxCh'+L,function(){var q=new THREE.CylinderGeometry(0.0025,0.0025,L,4);q.translate(0,-L/2,0);return q;}),sil));
+    var ss=new THREE.Mesh(sg('gxCS',function(){return star5(0.018,0.008,0.004);}),glowM(H,i%2?0xbfe0ff:0xfff4c0,1,true));ss.position.y=-L-0.012;dg.add(ss);top.add(dg);H.anim.push({k:'flut',o:dg,ph:i,b:0,amp:0.25});}
+  addTo(H,H.A[0].hand,st);
+}
+var PROPS={prop_wagasa:propWagasa,prop_moon:propMoon};
 
 // ───────── 人物模型：頭、身體、手腳（走路、坐下、跳、表情都會動）─────────
 // 原點在「腳底往上 0.5」（和以前的方塊一樣），所以所有位置、高度的算法都不用改；坐下改用姿勢，不再縮小。
@@ -2270,10 +2432,10 @@ openNick('',false);
 // ───────── 抽獎與造型：鏡子視窗、皮膚、配件、寵物 ─────────
 // 獎品由伺服器決定（gacha.js），這裡只負責把獎品畫出來、做抽獎儀式和衣櫃。
 var GCAT=null,GBY={},GIN={ok:false,coins:null,stars:0,inv:[],pity:{skin:0,hair:0,pet:0,lim:0},equip:{}},myEq={},myPet=null,GREADY=false;
-var EMO={skin_rainbow:'🌈',skin_gold:'✨',skin_night:'🌌',skin_cow:'🐄',skin_melon:'🍉',skin_check:'🏁',tie_red:'👔',tie_bow:'🦋',hair_flower:'🌼',hat_crown:'👑',hair_heart:'💖',hat_beanie:'🧢',hair_bow:'🎀',hair_ahoge:'🌱',hair_afro:'🦱',glasses_round:'👓',glasses_black:'🤓',glasses_sun:'🕶️',pet_ragdoll:'🐱',pet_shiba:'🐕',pet_penguin:'🐧',pet_chick:'🐥',pet_turtle:'🐢',pet_poop:'💩',pet_rock:'🪨',lim_phoenix:'🔥',lim_galaxy:'💫',lim_sakura:'🌸',lim_wings:'🕊️',lim_halo:'😇',lim_trail_star:'🌟',lim_cape:'🦸',lim_trail_bubble:'🫧',lim_trail_note:'🎵',lim_trail_paw:'🐾',lim_magical:'🪄',lim_idol:'🎤',lim_aurora:'🦄',lim_catears:'😺',lh_phoenix:'🪶',lh_galaxy:'🌙',lh_sakura:'🎎',lh_magical:'🎀',lh_idol:'🎶'};
+var EMO={skin_rainbow:'🌈',skin_gold:'✨',skin_night:'🌌',skin_cow:'🐄',skin_melon:'🍉',skin_check:'🏁',tie_red:'👔',tie_bow:'🦋',hair_flower:'🌼',hat_crown:'👑',hair_heart:'💖',hat_beanie:'🧢',hair_bow:'🎀',hair_ahoge:'🌱',hair_afro:'🦱',glasses_round:'👓',glasses_black:'🤓',glasses_sun:'🕶️',pet_ragdoll:'🐱',pet_shiba:'🐕',pet_penguin:'🐧',pet_chick:'🐥',pet_turtle:'🐢',pet_poop:'💩',pet_rock:'🪨',lim_phoenix:'🔥',lim_galaxy:'💫',lim_sakura:'🌸',lim_wings:'🕊️',lim_halo:'😇',lim_trail_star:'🌟',lim_cape:'🦸',lim_trail_bubble:'🫧',lim_trail_note:'🎵',lim_trail_paw:'🐾',lim_magical:'🪄',lim_idol:'🎤',lim_aurora:'🦄',lim_catears:'😺',lh_phoenix:'🪶',lh_galaxy:'🌙',lh_sakura:'🎎',lh_magical:'🎀',lh_idol:'🎶',prop_wagasa:'⛱️',prop_moon:'🔱'};
 var RCOL=['#e8ecff','#b98cff','#ffd54a'],RNAME=['普通','稀有','最高'];
 var POOLEMO={skin:'🎨',hair:'💇',pet:'🐾',lim:'🌟',lp:'🔥',lg:'💫',ls:'🌸'},POOLTAG={skin:'Ⅰ',hair:'Ⅱ',pet:'Ⅲ',lim:'★',lp:'★',lg:'★',ls:'★'},POOLSUB={skin:'THE MIRROR',hair:'THE CROWN',pet:'THE COMPANION',lim:'LIMITED',lp:'PHOENIX',lg:'GALAXY',ls:'SAKURA'};
-var SUBS=[['basic','基本'],['skin','皮膚'],['lhair','限定髮型'],['body','身上'],['head','頭上'],['face','臉上'],['back','背後'],['trail','足跡'],['hairfx','髮色特效'],['pet','寵物']];
+var SUBS=[['basic','基本'],['skin','皮膚'],['lhair','限定髮型'],['prop','手持'],['body','身上'],['head','頭上'],['face','臉上'],['back','背後'],['trail','足跡'],['hairfx','髮色特效'],['pet','寵物']];
 function wrapA(a){return Math.atan2(Math.sin(a),Math.cos(a));}
 function gsid(v){return typeof v==='string'&&v.length<24?v:'';}
 function mm(geo,c,o){var m=new THREE.Mesh(geo,mat(c,o||{}));return m;}
@@ -2498,16 +2660,16 @@ function stepSelfPet(e,dt){
 
 // ── 穿戴：自己與其他玩家共用 ──
 var selfEnt={H:HU,sig:'',acc:[],sw:[],rb:false,off:0,g:player};
-var trialK='',trialH='',trialUntil=0; // 試穿本期限定
+var trialK='',trialH='',trialP='',trialUntil=0; // 試穿本期限定
 function dress(ent,L,col,eq){
   eq=eq||{};
-  var k=gsid(eq.skin),lh=gsid(eq.lhair),b=gsid(eq.body),h=gsid(eq.head),fc=gsid(eq.face),bk=gsid(eq.back),hf=gsid(eq.hairfx);
+  var k=gsid(eq.skin),lh=gsid(eq.lhair),b=gsid(eq.body),h=gsid(eq.head),fc=gsid(eq.face),bk=gsid(eq.back),hf=gsid(eq.hairfx),pp=gsid(eq.prop);
   ent.trailId=gsid(eq.trail);
-  var sig=lkStr(L)+'|'+col+'|'+k+'|'+lh+'|'+b+'|'+h+'|'+fc+'|'+bk+'|'+hf;
+  var sig=lkStr(L)+'|'+col+'|'+k+'|'+lh+'|'+b+'|'+h+'|'+fc+'|'+bk+'|'+hf+'|'+pp;
   if(ent.sig===sig)return;ent.sig=sig;
   var H=ent.H;
   (ent.acc||[]).forEach(function(q){q.p.remove(q.g);disposeGroup(q.g);});ent.acc=[];ent.sw=[];ent.halo=null;ent.wings=null;ent.cape=null;
-  applyLook(H,L,col,{skin:k,hairfx:hf,lhair:lh});
+  applyLook(H,L,col,{skin:k,hairfx:hf,lhair:lh,prop:pp});
   function put(g,par){par.add(g);ent.acc.push({g:g,p:par});return g;}
   if(b&&!COSTUMES[k])put(buildBody(b),H.torso);
   var hide=false;
@@ -2517,7 +2679,7 @@ function dress(ent,L,col,eq){
   if(bk&&!(H.wingsOwn&&bk==='lim_wings')&&!(H.capeOwn&&bk==='lim_cape')){var bg=put(buildBack(bk),H.torso);ent.wings=bg.userData.wings||null;ent.cape=bg.userData.cape||null;}
   ent.rb=(k==='skin_rainbow');ent.off=Math.random();ent.limId=LIM[k]?k:'';ent.aurora=hf==='lim_aurora';
 }
-function dressSelf(){var eq=myEq;if(trialK&&performance.now()<trialUntil)eq=Object.assign({},myEq,{skin:trialK,lhair:trialH});dress(selfEnt,look,look.c,eq);selfEnt.buy=myBuy();setHeldItem(selfEnt,selfEnt.buy);}
+function dressSelf(){var eq=myEq;if(trialK&&performance.now()<trialUntil)eq=Object.assign({},myEq,{skin:trialK,lhair:trialH,prop:trialP});dress(selfEnt,look,look.c,eq);selfEnt.buy=myBuy();setHeldItem(selfEnt,selfEnt.buy);}
 function refreshSelf(){if(!GREADY)return;selfEnt.sig='';dressSelf();}
 function tickLooks(t){
   var all=[selfEnt];Object.keys(others).forEach(function(k){all.push(others[k]);});
@@ -2613,7 +2775,8 @@ function rateText(pk){
   return '最高 '+t+'%　稀有 '+r+'%　普通 '+(Math.round((100-t-r)*10)/10)+'%';
 }
 function limLeft(){if(!GCAT||!GCAT.lim)return '';var ms=GCAT.lim.until-(synced?srvNow():Date.now()),d=Math.floor(ms/86400000),h=Math.floor(ms%86400000/3600000);return ms<=0?'即將換期':'本期剩 '+(d>0?d+' 天 ':'')+h+' 小時';}
-var LIMDESC={lim_phoenix:'三層拖地火焰禮服・羽毛裙擺・鳳凰頭冠・火焰翅膀・赤金髮色',lim_galaxy:'星河禮服・星光薄紗・環繞身體的星環・新月頭飾・星光披風・銀河髮色',lim_sakura:'金線刺繡櫻花打掛・拖地裙襬・長振袖・大太鼓結・天女羽衣・櫻花光輪・環繞花吹雪・和傘'};
+var LIMDESC={lim_phoenix:'三層拖地火焰禮服・羽毛裙擺・鳳凰頭冠・火焰翅膀・赤金髮色',lim_galaxy:'銀河光帶星空外袍・星光內裙・拖地裙襬・星空薄紗長袖・行星星環・銀河披帛・新月星盤光輪',lim_sakura:'金線刺繡櫻花打掛・拖地裙襬・長振袖・大太鼓結・天女羽衣・櫻花光輪・環繞花吹雪・和傘'};
+function giftsOf(id){var g=(GBY[id]||{}).gift;return g?[].concat(g):[];}
 function isLimP(pk){return pk==='lim'||!!(GCAT&&GCAT.ban&&GCAT.ban[pk]);}
 function openPools(){return (GCAT&&GCAT.open)||['skin','hair','pet','lim'];}
 function renderDraw(){
@@ -2635,9 +2798,9 @@ function renderDraw(){
     bn.appendChild(ge('div','gl1',L.fixed?'✦ 限定池（目前三個限定池同時開放）✦':'✦ 本期限定 ✦'));bn.appendChild(ge('div','gl2',(EMO[L.id]||'')+' '+f.n));
     bn.appendChild(ge('div','gl3',LIMDESC[L.id]||''));
     bn.appendChild(ge('div','gl3','＋飄帶・華麗腳印・光環粒子・互動與跳躍特效'));
-    var gf=GBY[L.id]&&GBY[L.id].gift;if(gf)bn.appendChild(ge('div','gl3','🎁 抽到就送配套髮型：'+(EMO[gf]||'')+' '+((GBY[gf]||{}).n||'')));
+    var gfs=giftsOf(L.id);if(gfs.length)bn.appendChild(ge('div','gl3','🎁 抽到就送：'+gfs.map(function(gf){return (EMO[gf]||'')+' '+((GBY[gf]||{}).n||'');}).join('、')));
     if(!L.fixed)bn.appendChild(ge('div','gl3',limLeft()+'　下期：'+(EMO[L.next]||'')+' '+nx.n));
-    var tb=ge('button','gb main','👗 試穿 20 秒');tb.style.marginTop='6px';tb.addEventListener('click',function(){trialK=L.id;trialH=(GBY[L.id]||{}).gift||'';trialUntil=performance.now()+20000;refreshSelf();setView('ward');say('試穿中！20 秒後換回來');setTimeout(function(){trialK='';refreshSelf();},20050);});bn.appendChild(tb);
+    var tb=ge('button','gb main','👗 試穿 20 秒');tb.style.marginTop='6px';tb.addEventListener('click',function(){trialK=L.id;var gl=giftsOf(L.id);trialH=gl.filter(function(x){return /^lh_/.test(x);})[0]||'';trialP=gl.filter(function(x){return /^prop_/.test(x);})[0]||'';trialUntil=performance.now()+20000;refreshSelf();setView('ward');say('試穿中！20 秒後換回來');setTimeout(function(){trialK='';refreshSelf();},20050);});bn.appendChild(tb);
     gmain.appendChild(bn);}
   var box=ge('div','ginfo');
   var pity=GIN.pity[pkey]|0,left=pmax-pity;
@@ -2770,7 +2933,7 @@ function showCards(m){
     fc.appendChild(ge('div','gce',EMO[r.id]||'❓'));fc.appendChild(ge('div','gcn',it.n));
     fc.appendChild(ge('div','gcr',RNAME[r.r]));
     fc.appendChild(ge('div','gcs',r.dup?'重複　+'+r.st+' ⭐':'NEW！'));
-    if(r.gift)fc.appendChild(ge('div','gcs','＋送 '+(EMO[r.gift]||'')+((GBY[r.gift]||{}).n||'')));
+    (r.gifts||(r.gift?[r.gift]:[])).forEach(function(gf){fc.appendChild(ge('div','gcs','＋送 '+(EMO[gf]||'')+((GBY[gf]||{}).n||'')));});
     inn.appendChild(bk);inn.appendChild(fc);c.appendChild(inn);
     function flip(){
       if(c.classList.contains('flip'))return;
