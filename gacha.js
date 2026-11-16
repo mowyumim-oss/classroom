@@ -43,8 +43,9 @@ var ITEMS = [
   { id: 'lim_phoenix', pool: 'lim', slot: 'skin', r: 2, n: '鳳凰・焰羽', gift: ['lh_phoenix', 'prop_fan'] },
   { id: 'lim_galaxy', pool: 'lim', slot: 'skin', r: 2, n: '星河・銀漢', gift: ['lh_galaxy', 'prop_moon'] },
   { id: 'lim_sakura', pool: 'lim', slot: 'skin', r: 2, n: '櫻吹雪', gift: ['lh_sakura', 'prop_wagasa'] },
-  { id: 'lim_shadow', pool: 'lim', slot: 'skin', r: 2, n: '紫影・夜刃', gift: ['lh_shadow', 'prop_blade'] },
-  { id: 'lim_frost', pool: 'lim', slot: 'skin', r: 2, n: '冰晶・雪華', gift: ['lh_frost', 'prop_wand'] },
+  { id: 'lim_rose', pool: 'lim', slot: 'skin', r: 2, n: '薔薇・夢華', gift: ['lh_rose', 'prop_rose'] },
+  { id: 'lim_shadow', pool: 'lim', slot: 'skin', r: 1, n: '紫影・夜刃', gift: ['lh_shadow', 'prop_blade'] },
+  { id: 'lim_frost', pool: 'lim', slot: 'skin', r: 1, n: '冰晶・雪華', gift: ['lh_frost', 'prop_wand'] },
   { id: 'lim_magical', pool: 'lim', slot: 'skin', r: 1, n: '魔法少女裝', gift: 'lh_magical' },
   { id: 'lim_aurora', pool: 'lim', slot: 'hairfx', r: 1, n: '極光漸層髮' },
   { id: 'lim_wings', pool: 'lim', slot: 'back', r: 1, n: '光之翼' },
@@ -63,10 +64,12 @@ var ITEMS = [
   { id: 'lh_magical', pool: 'gift', slot: 'lhair', r: 1, n: '魔法超長雙馬尾' },
   { id: 'lh_idol', pool: 'gift', slot: 'lhair', r: 0, n: '偶像閃亮側馬尾' },
   // 手持道具：一樣是抽到限定服裝時附贈，可以在衣櫃「手持」選要不要拿
-  { id: 'lh_shadow', pool: 'gift', slot: 'lhair', r: 2, n: '夜刃高馬尾' },
-  { id: 'lh_frost', pool: 'gift', slot: 'lhair', r: 2, n: '冰晶皇冠長髮' },
-  { id: 'prop_blade', pool: 'gift', slot: 'prop', r: 2, n: '紫電短刃' },
-  { id: 'prop_wand', pool: 'gift', slot: 'prop', r: 2, n: '雪華冰杖' },
+  { id: 'lh_rose', pool: 'gift', slot: 'lhair', r: 2, n: '玫瑰小禮帽鮑伯' },
+  { id: 'prop_rose', pool: 'gift', slot: 'prop', r: 2, n: '玫瑰捧花' },
+  { id: 'lh_shadow', pool: 'gift', slot: 'lhair', r: 1, n: '夜刃高馬尾' },
+  { id: 'lh_frost', pool: 'gift', slot: 'lhair', r: 1, n: '冰晶皇冠長髮' },
+  { id: 'prop_blade', pool: 'gift', slot: 'prop', r: 1, n: '紫電短刃' },
+  { id: 'prop_wand', pool: 'gift', slot: 'prop', r: 1, n: '雪華冰杖' },
   { id: 'prop_fan', pool: 'gift', slot: 'prop', r: 2, n: '鳳羽焰扇' },
   { id: 'prop_wagasa', pool: 'gift', slot: 'prop', r: 2, n: '櫻花和傘' },
   { id: 'prop_moon', pool: 'gift', slot: 'prop', r: 2, n: '新月星盤權杖' }
@@ -76,7 +79,7 @@ var BY_ID = {};
 ITEMS.forEach(function (it) { BY_ID[it.id] = it; });
 
 var CFG = {
-  allLim: true,                     // ★ true＝五個限定池（鳳凰、星河、櫻吹雪、夜刃、雪華）同時開放可以抽；false＝只開「本週限定」一個池，每週一輪換
+  allLim: true,                     // ★ true＝四個限定池（鳳凰、星河、櫻吹雪、薔薇）同時開放可以抽；false＝只開「本週限定」一個池，每週一輪換
   coinOne: 8, coinTen: 72,          // 金幣：單抽、十抽
   starOne: 20, starTen: 180,        // 星星幣：單抽、十抽（重複普通 5 次或重複稀有 4 次 ＝ 20 星星幣 ＝ 一抽）
   pity: 30,                         // 常駐池：第 30 抽（該池連續沒中最高獎的第 30 抽）保底最高獎
@@ -87,8 +90,8 @@ var CFG = {
   limDupTop: 30                     // 限定池最高獎重複時給的星星幣
 };
 // 限定池：allLim 開著時分成三個池（每池最高獎固定一款），關掉時只有一個每週輪換的 lim 池；保底共用 lim 的計數
-var LIMBAN = { lp: 'lim_phoenix', lg: 'lim_galaxy', ls: 'lim_sakura', lv: 'lim_shadow', lf: 'lim_frost' };
-var LIMNAME = { lp: '鳳凰', lg: '星河', ls: '櫻吹雪', lv: '夜刃', lf: '雪華' };
+var LIMBAN = { lp: 'lim_phoenix', lg: 'lim_galaxy', ls: 'lim_sakura', lr: 'lim_rose' };
+var LIMNAME = { lp: '鳳凰', lg: '星河', ls: '櫻吹雪', lr: '薔薇' };
 function isLim(pool) { return pool === 'lim' || Object.prototype.hasOwnProperty.call(LIMBAN, pool); }
 function pityKey(pool) { return isLim(pool) ? 'lim' : pool; }
 function openPools() { return STD.concat(CFG.allLim ? Object.keys(LIMBAN) : ['lim']); }
