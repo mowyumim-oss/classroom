@@ -673,15 +673,15 @@ function buildHair(hi,M){
   var g=new THREE.Group(),sw=[];g.userData.sw=sw;
   function hp(geo,x,y,z,rx,ry,rz){var m=new THREE.Mesh(geo,M.hair);m.position.set(x,y,z);m.rotation.set(rx||0,ry||0,rz||0);m.castShadow=true;g.add(m);return m;}
   function cap(){hp(capG(),0,0,0);}
-  function locks(){hp(bangG('airy'),0,0,0);}
+  function locks(){hp(bangG('curtain'),0,0,0);}
   function blunt(){hp(bangG('blunt'),0,0,0);}
   function curtain(){hp(bangG('curtain'),0,0,0);}
   function nape(){hp(sg('hnape',function(){var s=new THREE.SphereGeometry(0.17,14,10);s.scale(1.15,0.75,0.7);return s;}),0,0.12,-0.1);}
-  function longBack(){hp(sg('hlong',function(){return new THREE.CylinderGeometry(0.218,0.24,0.46,18,1,false,Math.PI/2,Math.PI);}),0,0.06,-0.005);}
+  function longBack(len){var m=hp(h2Drape('L'+(len||0.5),len||0.5,0.95,0.12),0,0.2,0);var m2=hp(h2Drape('L2'+(len||0.5),(len||0.5)*0.8,1.5,0.18,1.03),0,0.2,0);sw.push({g:m,b:0,i:0});}
   function sides(len){[-1,1].forEach(function(sd){var b=hp(sg('hside'+len,function(){var q=new THREE.BoxGeometry(0.06,len,0.11);q.translate(0,-len/2+0.05,0);return q;}),sd*0.19,0.2,0.05,0,0,sd*0.06);});}
   cap();
   if(hi===0){locks();nape();}
-  else if(hi===1){locks();longBack();sides(0.38);}
+  else if(hi===1){locks();longBack(0.52);}
   else if(hi===2){blunt();nape();[-1,1].forEach(function(sd){var t=new THREE.Mesh(sg('htie',function(){return new THREE.SphereGeometry(0.036,8,6);}),M.tie);t.position.set(sd*0.205,0.29,-0.06);g.add(t);chainHair(g,M.hair,sw,sd*0.23,0.29,-0.07,4,0.12,0.075,0.03,0.2,sd*0.35);});}
   else if(hi===3){locks();nape();[[0,0.42,0.02,-0.2,0],[0.1,0.4,-0.03,-0.4,-0.5],[-0.1,0.4,-0.03,-0.4,0.5],[0,0.38,-0.12,-1.0,0],[0.13,0.33,-0.11,-0.9,-0.8],[-0.13,0.33,-0.11,-0.9,0.8],[0.06,0.43,0.08,0.1,-0.3]].forEach(function(q){hp(sg('hspike',function(){var c=new THREE.ConeGeometry(0.06,0.19,6);c.translate(0,0.08,0);return c;}),q[0],q[1],q[2],q[3],0,q[4]);});}
   else if(hi===4){locks();nape();var t4=new THREE.Mesh(sg('htie',function(){return new THREE.SphereGeometry(0.036,8,6);}),M.tie);t4.position.set(0,0.38,-0.18);g.add(t4);chainHair(g,M.hair,sw,0,0.37,-0.2,5,0.11,0.07,0.03,-0.5,0);}
@@ -691,7 +691,7 @@ function buildHair(hi,M){
     for(var c=0;c<9;c++){var a=Math.PI/2+c/8*Math.PI;for(var r=0;r<4;r++){hp(sg('hcurl',function(){return new THREE.SphereGeometry(0.06,10,8);}),Math.sin(a)*(0.2+r*0.012),0.05-r*0.085,Math.cos(a)*(0.2+r*0.012)*(c===0||c===8?1:1.05)+ (r%2?0.015:-0.015),0,0,0);}}
     [-1,1].forEach(function(sd){for(var r=0;r<4;r++)hp(sg('hcurl',function(){return new THREE.SphereGeometry(0.06,10,8);}),sd*(0.2+(r%2)*0.02),0.12-r*0.085,0.06);});}
   else if(hi===8){blunt();hp(sg('hbob3',function(){return h2Shell(1.0,Math.PI*2-1.0,56,12,0.5,function(){return 2.28;},function(ph,th,t){return 0.236*(1+0.07*Math.sin(Math.PI*t))-0.035*Math.pow(t,4)+0.003*Math.sin(ph*16);});}),0,0,0);}
-  else if(hi===9){blunt();longBack();[-1,1].forEach(function(sd){hp(sg('hhime',function(){var q=new THREE.BoxGeometry(0.05,0.2,0.1);q.translate(0,-0.1,0);return q;}),sd*0.195,0.24,0.08);});}
+  else if(hi===9){blunt();longBack(0.55);[-1,1].forEach(function(sd){hp(sg('hhime',function(){var q=new THREE.BoxGeometry(0.05,0.2,0.1);q.translate(0,-0.1,0);return q;}),sd*0.195,0.24,0.08);});}
   else if(hi===10){curtain();nape();var tb=new THREE.Mesh(sg('htie',function(){return new THREE.SphereGeometry(0.036,8,6);}),M.tie);chainHair(g,M.hair,sw,0.15,0.13,-0.1,7,0.065,0.045,0.032,0.35,0.55,'braid');}
   return g;
 }
@@ -1357,14 +1357,9 @@ function hairGalaxy(H,g,hm,capM,sp){
   var T=gxTexs();
   var hmM=M_(H,0xffffff,{map:T.hair,emissive:0xffffff,emissiveMap:T.hairE,emissiveIntensity:.9,roughness:.32,metalness:.1,side:THREE.DoubleSide});H.glow.push([hmM,.9]);
   var sv=hm(0xe6eaff,{emissive:0x1a2260,emissiveIntensity:.3,roughness:.22,metalness:.18});capM(sv);
-  sp(bangG('airy'),sv,0,0,0);
+  sp(bangG('curtain'),sv,0,0,0);
   // 背後的長髮簾（從頭頂一直垂到腰下，髮尾一束一束）
-  var cur=new THREE.Group();cur.position.set(0,0.2,-0.01);g.add(cur);
-  var cm=new THREE.Mesh(sg('gxCurtain2',function(){return skLathe([[0.236,0.04],[0.226,-0.1],[0.225,-0.28],[0.245,-0.52],[0.262,-0.76],[0.25,-0.94]],64,Math.PI/2+0.05,Math.PI-0.1,function(th,t){var b=(1-Math.cos(th))/2,tip=Math.pow(t,6);return [1+Math.sin(th*14)*0.035*Math.min(1,t*3)+Math.sin(th*5)*0.03*t,-tip*(0.06+0.18*b*b)-tip*0.07*Math.abs(Math.sin(th*9))];});}),hmM);cm.scale.z=1.25;cm.castShadow=true;cur.add(cm);
-  // 疊在上面的三片長髮（長度不一樣，看起來一層一層）
-  [[Math.PI-0.55,0.5,-0.82,0.9],[Math.PI+0.05,0.55,-1.0,1.1],[Math.PI+0.6,0.5,-0.78,0.8]].forEach(function(q,k){var lg=new THREE.Group();cur.add(lg);
-    var pm=new THREE.Mesh(sg('gxLay'+k,function(){return skLathe([[0.244,0.0],[0.236,-0.14],[0.24,-0.34],[0.262,q[2]*0.65],[0.27,q[2]]],24,q[0]-q[1]/2,q[1],function(th,t){var tip=Math.pow(t,4);return [1+Math.sin(th*16)*0.03*t,-tip*0.12*(1-Math.abs(Math.sin((th-q[0])/q[1]*Math.PI)))];});}),hmM);pm.scale.z=1.25;lg.add(pm);H.anim.push({k:'hcur',o:lg,s:q[3]});});
-  H.anim.push({k:'hcur',o:cur});
+  nlCurtain(H,g,hmM,1.0);
   // 臉旁兩束長側髮
   [-1,1].forEach(function(sd){var sl=new THREE.Group();sl.position.set(sd*0.17,0.25,0.07);g.add(sl);
     sl.add(new THREE.Mesh(sg('gxSide',function(){var q=skLathe([[0.045,0],[0.05,-0.2],[0.04,-0.45],[0.012,-0.62]],12,0,Math.PI*2,function(th,t){return [1,0];});q.scale(0.5,1,1.2);return q;}),hmM));
@@ -1580,16 +1575,12 @@ function hairPhoenix(H,g,hm,capM,sp){
   var hmM=M_(H,0xffffff,{map:T.hair,emissive:0xffffff,emissiveMap:T.hairE,emissiveIntensity:.8,roughness:.3,metalness:.1,side:THREE.DoubleSide});H.glow.push([hmM,.8]);
   var rd=hm(0xb8160e,{emissive:0x3a0500,emissiveIntensity:.4,roughness:.22,metalness:.15});capM(rd);
   var gold=M_(H,0xf2c230,{metalness:.82,roughness:.18,emissive:0x5a3000}),ruby=glowM(H,0xff2a1a,1,true),pearl=M_(H,0xfff6f0,{roughness:.12,metalness:.1,emissive:0x2a2020});
-  sp(bangG('airy'),rd,0,0,0);
+  sp(bangG('curtain'),rd,0,0,0);
   // 高髻：兩個髮環往上翹
   [-1,1].forEach(function(sd){sp(sg('pxLoop',function(){return new THREE.TorusGeometry(0.075,0.04,10,18);}),rd,sd*0.08,0.5,-0.08,0,sd*0.5,sd*0.35);});
   sp(sg('mage2',function(){var q=new THREE.SphereGeometry(0.1,14,10);q.scale(1.3,0.7,1);return q;}),rd,0,0.42,-0.1);
   // 長髮（同星河的髮簾做法，燃燒漸層）
-  var cur=new THREE.Group();cur.position.set(0,0.2,-0.01);g.add(cur);
-  var cm=new THREE.Mesh(sg('gxCurtain2',function(){return skLathe([[0.236,0.04],[0.226,-0.1],[0.225,-0.28],[0.245,-0.52],[0.262,-0.76],[0.25,-0.94]],64,Math.PI/2+0.05,Math.PI-0.1,function(th,t){var b=(1-Math.cos(th))/2,tip=Math.pow(t,6);return [1+Math.sin(th*14)*0.035*Math.min(1,t*3)+Math.sin(th*5)*0.03*t,-tip*(0.06+0.18*b*b)-tip*0.07*Math.abs(Math.sin(th*9))];});}),hmM);cm.scale.z=1.25;cm.castShadow=true;cur.add(cm);
-  [[Math.PI-0.55,0.5,-0.82,0.9],[Math.PI+0.05,0.55,-1.0,1.1],[Math.PI+0.6,0.5,-0.78,0.8]].forEach(function(q,k){var lg=new THREE.Group();cur.add(lg);
-    var pm=new THREE.Mesh(sg('gxLay'+k,function(){return skLathe([[0.244,0.0],[0.236,-0.14],[0.24,-0.34],[0.262,q[2]*0.65],[0.27,q[2]]],24,q[0]-q[1]/2,q[1],function(th,t){var tip=Math.pow(t,4);return [1+Math.sin(th*16)*0.03*t,-tip*0.12*(1-Math.abs(Math.sin((th-q[0])/q[1]*Math.PI)))];});}),hmM);pm.scale.z=1.25;lg.add(pm);H.anim.push({k:'hcur',o:lg,s:q[3]});});
-  H.anim.push({k:'hcur',o:cur});
+  nlCurtain(H,g,hmM,1.0);
   [-1,1].forEach(function(sd){var sl=new THREE.Group();sl.position.set(sd*0.17,0.25,0.07);g.add(sl);
     sl.add(new THREE.Mesh(sg('gxSide',function(){var q=skLathe([[0.045,0],[0.05,-0.2],[0.04,-0.45],[0.012,-0.62]],12,0,Math.PI*2,function(th,t){return [1,0];});q.scale(0.5,1,1.2);return q;}),hmM));H.anim.push({k:'hcur',o:sl,s:0.6});});
   // 鳳冠：金冠圈、正中央一隻展翅金鳳（羽毛尾巴）、兩側火焰金飾
@@ -1647,11 +1638,10 @@ function nlHairTex(key,stops,em,strand){
       for(i=0;i<190;i++){var x0=R()*w,a=0.15+R()*0.35;x.strokeStyle=R()<0.45?'rgba(255,255,255,'+(a*0.8)+')':strand.replace('A',(a*0.8).toFixed(2));x.lineWidth=0.6+R()*1.4;x.beginPath();x.moveTo(x0,0);x.bezierCurveTo(x0+(R()-0.5)*14,h*0.33,x0+(R()-0.5)*14,h*0.66,x0+(R()-0.5)*10,h);x.stroke();}
       var sh=x.createLinearGradient(0,h*0.08,0,h*0.16);sh.addColorStop(0,'rgba(255,255,255,0)');sh.addColorStop(0.5,'rgba(255,255,255,.4)');sh.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=sh;x.fillRect(0,h*0.08,w,h*0.08);}
     for(i=0;i<50;i++){x.fillStyle=em?'#fff':'rgba(255,255,255,.85)';x.beginPath();x.arc(R()*w,h*(0.65+R()*0.35),0.6+R()*1.2,0,6.3);x.fill();}});}
-function nlCurtain(H,g,hmM,scale){ // 和星河、鳳凰同一種長髮簾
-  var cur=new THREE.Group();cur.position.set(0,0.2,-0.01);cur.scale.y=scale||1;g.add(cur);
-  var cm=new THREE.Mesh(sg('gxCurtain2',function(){return skLathe([[0.236,0.04],[0.226,-0.1],[0.225,-0.28],[0.245,-0.52],[0.262,-0.76],[0.25,-0.94]],64,Math.PI/2+0.05,Math.PI-0.1,function(th,t){var b=(1-Math.cos(th))/2,tip=Math.pow(t,6);return [1+Math.sin(th*14)*0.035*Math.min(1,t*3)+Math.sin(th*5)*0.03*t,-tip*(0.06+0.18*b*b)-tip*0.07*Math.abs(Math.sin(th*9))];});}),hmM);cm.scale.z=1.25;cm.castShadow=true;cur.add(cm);
-  [[Math.PI-0.55,0.5,-0.82,0.9],[Math.PI+0.05,0.55,-1.0,1.1],[Math.PI+0.6,0.5,-0.78,0.8]].forEach(function(q,k){var lg=new THREE.Group();cur.add(lg);
-    var pm=new THREE.Mesh(sg('gxLay'+k,function(){return skLathe([[0.244,0.0],[0.236,-0.14],[0.24,-0.34],[0.262,q[2]*0.65],[0.27,q[2]]],24,q[0]-q[1]/2,q[1],function(th,t){var tip=Math.pow(t,4);return [1+Math.sin(th*16)*0.03*t,-tip*0.12*(1-Math.abs(Math.sin((th-q[0])/q[1]*Math.PI)))];});}),hmM);pm.scale.z=1.25;lg.add(pm);H.anim.push({k:'hcur',o:lg,s:q[3]});});
+function nlCurtain(H,g,hmM,scale){ // 長髮：從頭髮邊緣直接垂下來（沒有斷層）＋兩層外層增加份量
+  var cur=new THREE.Group();cur.position.set(0,0.2,0);cur.scale.y=scale||1;g.add(cur);
+  var m=new THREE.Mesh(h2Drape('C1',0.82,0.95,0.16),hmM);m.castShadow=true;cur.add(m);
+  [[1.45,0.62,0.22,1.03,0.9],[2.0,0.72,0.25,1.05,1.1]].forEach(function(q,k){var lg=new THREE.Group();cur.add(lg);lg.add(new THREE.Mesh(h2Drape('C'+(k+2),q[1],q[0],q[2],q[3]),hmM));H.anim.push({k:'hcur',o:lg,s:q[4]});});
   H.anim.push({k:'hcur',o:cur});return cur;}
 
 // ══════════ 紫影・夜刃（殺手） ══════════
@@ -1735,7 +1725,7 @@ function hairShadow(H,g,hm,capM,sp){
   var T=shTexs();
   var hmM=M_(H,0xffffff,{map:T.hair,emissive:0xffffff,emissiveMap:T.hairE,emissiveIntensity:.9,roughness:.3,metalness:.12,side:THREE.DoubleSide});H.glow.push([hmM,.9]);
   var dk=hm(0x221630,{emissive:0x0a0016,roughness:.22,metalness:.18});capM(dk);
-  sp(bangG('airy'),dk,0,0,0);
+  sp(bangG('curtain'),dk,0,0,0);
   // 斜斜蓋住一邊眼角的長瀏海（颯）
   nlLock(H,g,hmM,0.3,0.075,0.04,0.35,-0.07,0.39,0.185,-0.12,0.15,0.45);
   nlLock(H,g,hmM,0.24,0.06,0.03,0.35,-0.15,0.35,0.16,-0.06,0.3,0.22);
@@ -1942,10 +1932,11 @@ function buildRose(H){
   H.roM=mint;
   setLimbs(H,{ch:mint,cl:S,ua:S,fa:glove,pv:mint,th:S,sh:S,ft:gold});H.ms.ha.forEach(function(m){m.material=glove;});
   // 超蓬蓬短裙：好幾層荷葉邊薄紗，底下露出一層蜜桃粉
+  var Wp=function(n,a,d){return function(th,t){var tp=1-h2tri(th/(Math.PI*2)*n);return [1+Math.sin(th*n*2)*a*0.3*t+tp*a*t,-d*t*t*Math.pow(tp,1.6)];};};
   var W=function(n,a,b){return function(th,t){return [1+Math.sin(th*n)*a*t+Math.sin(th*n*2.3+1)*a*0.4*t,-Math.abs(Math.sin(th*n))*(b||0.03)*t];};};
   mkSkirt(H,sg('roCore',function(){return skLathe([[0.2,0],[0.32,-0.14],[0.42,-0.27]],48,0,Math.PI*2,W(10,0.04));}),mint,0.085);
-  var tiers=[['roPk',[[0.26,-0.09],[0.42,-0.22],[0.53,-0.31]],W(14,0.12,0.05),pink],['roC',[[0.3,-0.09],[0.44,-0.18],[0.52,-0.26]],W(20,0.11),mint],
-    ['roB',[[0.24,-0.03],[0.36,-0.11],[0.46,-0.19]],W(17,0.13),mint],['roA',[[0.2,0.012],[0.3,-0.04],[0.38,-0.1]],W(15,0.13),mint],['roTul',[[0.21,0.0],[0.36,-0.12],[0.5,-0.25],[0.55,-0.3]],W(22,0.1),tul]];
+  var tiers=[['roPk',[[0.26,-0.09],[0.42,-0.22],[0.53,-0.31]],W(14,0.12,0.05),pink],['roC',[[0.3,-0.09],[0.46,-0.19],[0.55,-0.27]],W(20,0.11),mint],
+    ['roB',[[0.24,-0.03],[0.38,-0.12],[0.5,-0.21]],Wp(10,0.07,0.07),mint],['roA',[[0.2,0.012],[0.31,-0.05],[0.41,-0.12]],Wp(8,0.07,0.08),mint],['roTul',[[0.21,0.0],[0.36,-0.12],[0.5,-0.25],[0.55,-0.3]],W(22,0.1),tul]];
   tiers.forEach(function(q){var m=new THREE.Mesh(sg(q[0],function(){return skLathe(q[1],72,0,Math.PI*2,q[2]);}),q[3]);m.castShadow=q[3]!==tul;H.skirt.add(m);});
   // 裙上的立體玫瑰、葉子、羽毛
   var R=rng(21),rs=[],lv=[];
@@ -1957,7 +1948,7 @@ function buildRose(H){
   var pp=[];for(i=0;i<6;i++){var a0=-1.4+i*0.56,a1=a0+0.56;for(j=0;j<=10;j++){var u=j/10,an=a0+(a1-a0)*u;pp.push(new THREE.Vector3(Math.sin(an)*0.5,-0.24-Math.sin(u*Math.PI)*0.05,Math.cos(an)*0.5*0.82));}}
   roPearls(H,H.skirt,pp,0.011);
   // 後面長長的透紗拖尾（前面打開露出腿），兩層，下襬有金蕾絲和粉色荷葉邊
-  var TP=[[0.25,-0.02],[0.31,-0.2],[0.38,-0.42],[0.44,-0.62],[0.46,-0.69]],PH0=1.2,PHL=Math.PI*2-2.4;
+  var TP=[[0.25,-0.02],[0.31,-0.2],[0.38,-0.42],[0.44,-0.62],[0.46,-0.69]],PH0=0.78,PHL=Math.PI*2-1.56;
   var TF=function(th,t){var b=(1-Math.cos(th))/2,s=Math.max(0,(t-0.25)/0.75);s=s*s*(3-2*s);return [1+b*b*b*s*1.9+Math.sin(th*9)*0.03*t,-b*b*s*0.012];};
   var trM=M_(H,0xffffff,{map:T.train,transparent:true,opacity:.95,emissive:0xffffff,emissiveMap:T.train,emissiveIntensity:.18,side:THREE.DoubleSide,depthWrite:false,roughness:.6});
   var tr=new THREE.Mesh(sg('roTr',function(){return skLathe(TP,72,PH0,PHL,TF);}),trM);H.skirt.add(tr);
@@ -2077,12 +2068,12 @@ function hairRose(H,g,hm,capM,sp){
   var hmM=M_(H,0xffffff,{map:T.hair,emissive:0xffffff,emissiveMap:T.hairE,emissiveIntensity:.5,roughness:.32,metalness:.1,side:THREE.DoubleSide});H.glow.push([hmM,.5]);
   var hc=hm(0xdcb4a2,{roughness:.3,metalness:.1});capM(hc);
   var roseM=M_(H,0xffffff,{roughness:.55,side:THREE.DoubleSide}),leafM=M_(H,0x9fd8b4,{roughness:.5,side:THREE.DoubleSide});
-  sp(bangG('airy'),hc,0,0,0);
+  sp(bangG('curtain'),hc,0,0,0);
   // 內彎的鮑伯短髮＋後面一層層
-  var cur=new THREE.Group();cur.position.set(0,0.2,-0.01);g.add(cur);
-  var bob=new THREE.Mesh(sg('roBob',function(){return skLathe([[0.236,0.05],[0.236,-0.1],[0.245,-0.24],[0.225,-0.34],[0.185,-0.38]],64,0.95,Math.PI*2-1.9,function(th,t){return [1+Math.sin(th*16)*0.025*t+Math.sin(th*5)*0.02*t,0];});}),hmM);bob.scale.z=1.25;bob.castShadow=true;cur.add(bob);
-  [-1,1].forEach(function(sd){var sl=nlLock(H,g,hmM,0.3,0.045,0.035,0.5,sd*0.185,0.27,0.08,0,0,sd*0.06);H.anim.push({k:'hcur',o:sl,s:0.4});});
-  H.anim.push({k:'hcur',o:cur,s:0.4});
+  nlCurtain(H,g,hmM,1.0);
+  // 垂到胸前的長側髮（框住臉）＋耳後兩束
+  [-1,1].forEach(function(sd){var fl=nlLock(H,g,hmM,0.62,0.05,0.03,0.55,sd*0.19,0.25,0.07,0.1,0,sd*0.07);H.anim.push({k:'hcur',o:fl,s:0.5});
+    var bl=nlLock(H,g,hmM,0.66,0.055,0.03,0.6,sd*0.17,0.22,-0.06,0.18,0,sd*0.12);H.anim.push({k:'hcur',o:bl,s:0.7});});
   // 斜戴的迷你小禮帽：薄荷緞面、粉色帽帶、玫瑰、珍珠、羽毛、短網紗
   var hat=new THREE.Group();hat.position.set(0.1,0.42,0.03);hat.rotation.set(-0.12,0.3,-0.38);g.add(hat);
   var hatM=M_(H,0xbfe9d0,{roughness:.3,metalness:.1});
@@ -2130,11 +2121,18 @@ function faceTex(col,ex){var k=col+ex;if(FTEX[k])return FTEX[k];var c=document.c
 function drawFace(x,col,ex){ // 手帳塗鴉風：小黑點眼、圓圓腮紅、ω 嘴
   var cx=256,EY=184,INK='#3a2a26',dot=fcShade(col,-0.6);x.lineCap='round';x.lineJoin='round';
   [-1,1].forEach(function(sd){x.fillStyle='rgba(240,120,150,.62)';x.beginPath();x.arc(cx+sd*156,236,33,0,6.3);x.fill();});
+  // 眉毛：短短的柔和弧線，表情不同位置不同
+  [-1,1].forEach(function(sd){var X=cx+sd*102,by=EY-62+(ex==='surprise'?-10:0)+(ex==='sleep'?6:0);x.strokeStyle='rgba(70,45,38,.85)';x.lineWidth=7;x.lineCap='round';
+    x.beginPath();x.moveTo(X-sd*24,by+(ex==='happy'?2:4));x.quadraticCurveTo(X,by-8+(ex==='happy'?-4:0),X+sd*26,by+2);x.stroke();});
   [-1,1].forEach(function(sd){var X=cx+sd*102;x.strokeStyle=INK;x.fillStyle=dot;x.lineWidth=8;
-    if(ex==='blink'){x.beginPath();x.moveTo(X-30,EY);x.lineTo(X+30,EY);x.stroke();}
-    else if(ex==='sleep'){x.beginPath();x.moveTo(X-31,EY-7);x.quadraticCurveTo(X,EY+20,X+31,EY-7);x.stroke();}
+    if(ex==='blink'){x.beginPath();x.moveTo(X-30,EY);x.lineTo(X+30,EY);x.stroke();x.lineWidth=5;x.beginPath();x.moveTo(X+sd*28,EY);x.lineTo(X+sd*40,EY-10);x.stroke();}
+    else if(ex==='sleep'){x.beginPath();x.moveTo(X-31,EY-7);x.quadraticCurveTo(X,EY+20,X+31,EY-7);x.stroke();x.lineWidth=4;[[-12,9,-14,22],[2,13,2,26],[16,9,19,21]].forEach(function(q){x.beginPath();x.moveTo(X+q[0],EY+q[1]);x.lineTo(X+q[2],EY+q[3]);x.stroke();});}
     else if(ex==='happy'){x.beginPath();x.moveTo(X-sd*24,EY-24);x.lineTo(X+sd*20,EY);x.lineTo(X-sd*24,EY+24);x.stroke();}
-    else{var r=ex==='surprise'?36:31;x.save();x.translate(X,EY);x.scale(1,1.12);x.beginPath();x.arc(0,0,r,0,6.3);x.restore();x.fill();x.fillStyle='rgba(255,255,255,.95)';x.beginPath();x.arc(X+10,EY-13,8.5,0,6.3);x.fill();x.beginPath();x.arc(X-10,EY+13,4,0,6.3);x.fill();}});
+    else{var r=ex==='surprise'?36:31;
+      // 睫毛：上緣一道弧線＋眼尾兩三根往外翹
+      x.strokeStyle=INK;x.lineWidth=6;x.beginPath();x.ellipse(X,EY,r+5,(r+5)*1.12,0,Math.PI*1.12,Math.PI*1.88);x.stroke();
+      x.lineWidth=5;var ex0=X+sd*(r+3),ey0=EY-r*0.75;[[14,-12],[18,-2],[10,-20]].forEach(function(q){x.beginPath();x.moveTo(ex0-sd*2,ey0+4);x.lineTo(ex0+sd*q[0],ey0+q[1]);x.stroke();});
+      x.lineWidth=3.5;x.beginPath();x.moveTo(X+sd*(r-4),EY+r*0.95);x.lineTo(X+sd*(r+6),EY+r*0.95+6);x.stroke();x.save();x.translate(X,EY);x.scale(1,1.12);x.beginPath();x.arc(0,0,r,0,6.3);x.restore();x.fill();x.fillStyle='rgba(255,255,255,.95)';x.beginPath();x.arc(X+10,EY-13,8.5,0,6.3);x.fill();x.beginPath();x.arc(X-10,EY+13,4,0,6.3);x.fill();}});
   x.strokeStyle=INK;x.lineWidth=7;var MY=230;x.save();x.translate(cx,MY);x.scale(1.35,1.35);x.translate(-cx,-MY);
   if(ex==='smile'||ex==='happy'){x.fillStyle='#b8404c';x.beginPath();x.moveTo(cx-20,MY-2);x.quadraticCurveTo(cx,MY+2,cx+20,MY-2);x.quadraticCurveTo(cx+16,MY+24,cx,MY+25);x.quadraticCurveTo(cx-16,MY+24,cx-20,MY-2);x.fill();
     x.fillStyle='#f48a98';x.beginPath();x.ellipse(cx,MY+16,9,6,0,0,6.3);x.fill();x.stroke();}
@@ -2151,7 +2149,7 @@ function animFace(H,t,pose){if(!H.face)return;var col='#'+H.M.iris.color.getHexS
   if(ex!==H.fx||col!==H.fcol){H.fx=ex;H.fcol=col;H.face.material.map=faceTex(col,ex);}}
 
 // ───────── 2.9：立體上衣（取代原本「圓筒＋貼圖」）：有肩線、胸型、真的一層層衣領、緞帶、盔甲、滾邊 ─────────
-var BD_SH=[[0.075,0.51],[0.14,0.49],[0.19,0.445],[0.205,0.39],[0.2,0.32],[0.178,0.24],[0.166,0.16],[0.172,0.1],[0.19,0.04]];
+var BD_SH=[[0.105,0.47],[0.15,0.455],[0.19,0.43],[0.205,0.385],[0.2,0.32],[0.178,0.24],[0.166,0.16],[0.172,0.1],[0.19,0.04]];
 function bdBust(th,t){var f=Math.max(0,Math.cos(th)),m=Math.exp(-Math.pow((Math.abs(th)-0.42)/0.3,2))*f,bust=Math.exp(-Math.pow((t-0.45)/0.14,2));return [1+0.09*m*bust,0];}
 function bdP(prof,fn){return function(th,t,off){var v=skProfAt(prof,fn,th,t);if(off){var r=Math.hypot(v.x,v.z/0.82)||1;v.x*=1+off/r;v.z*=1+off/r;}return v;};}
 function bdGroup(H){var g=new THREE.Group();g.scale.z=0.92;addTo(H,H.torso,g);return g;}
@@ -2306,14 +2304,28 @@ function h2Shell(ph0,ph1,nu,nv,th0,thMax,rad){
     pos.push(r*Math.sin(th)*Math.sin(ph),0.2+r*Math.cos(th)*1.03,r*Math.sin(th)*Math.cos(ph)*0.98-0.008);uv.push(u*3,1-t);}
   for(j=0;j<nv;j++)for(i=0;i<nu;i++){var a=j*(nu+1)+i,b=a+nu+1;idx.push(a,b,a+1,b,b+1,a+1);}
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();return g;}
-function capG(){return sg('hcap3',function(){return h2Shell(-Math.PI,Math.PI,64,16,0.0,function(ph){var f=Math.cos(ph);return f<0?1.95+0.32*(-f):1.95-1.0*Math.pow(f,1.3);},
+function capG(){return sg('hcap3',function(){return h2Shell(-Math.PI,Math.PI,64,16,0.0,function(ph){var f=Math.cos(ph);return f<0?1.95+0.32*(-f):1.95-0.78*Math.pow(f,1.3);},
   function(ph,th,t){var f=Math.cos(ph);return 0.229*(1+0.035*Math.sin(th*1.3))*(1+0.05*Math.max(0,-f)*Math.sin(th))*(1+0.03*h2ss(0.6,1,t)*Math.max(0,-f));});});}
-// 瀏海：airy＝空氣感碎瀏海、blunt＝齊瀏海＋公主切側髮、curtain＝中分瀏海
-function bangG(type){return sg('hbang3_'+type,function(){return h2Shell(-1.5,1.5,72,14,0.3,function(ph){var a=Math.abs(ph),s=h2ss(0.95,1.5,a),tip;
-    if(type==='blunt')return 1.47+0.04*(1-h2tri(ph*5.5))+s*0.62;
-    if(type==='curtain')return 1.18+0.32*h2ss(0.02,0.6,a)+0.1*(1-h2tri(ph*2.6))+s*0.5;
-    tip=1-h2tri(ph*2.9+0.2);return 1.33+0.15*tip*tip+0.04*Math.sin(ph*5)+s*0.55;},
-  function(ph,th,t){return 0.238+0.014*Math.sin(Math.PI*t)-0.012*t*t*t+0.004*Math.sin(ph*14);});});}
+// 瀏海：blunt＝齊瀏海（平整一排＋公主切側髮）、curtain＝八字瀏海（中分，往兩邊斜斜變長）
+function h2Merge(list){var pos=[],uv=[],idx=[],off=0;list.forEach(function(g){var P=g.attributes.position.array,U=g.attributes.uv.array,I=g.index.array;for(var i=0;i<P.length;i++)pos.push(P[i]);for(i=0;i<U.length;i++)uv.push(U[i]);for(i=0;i<I.length;i++)idx.push(I[i]+off);off+=P.length/3;});
+  var o=new THREE.BufferGeometry();o.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));o.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));o.setIndex(idx);o.computeVertexNormals();return o;}
+function bangG(type){if(type==='airy')type='curtain';return sg('hbang5_'+type,function(){
+  if(type==='blunt')return h2Shell(-1.5,1.5,72,14,0.3,function(ph){var a=Math.abs(ph);return 1.47+0.012*Math.cos(ph*3)+h2ss(0.95,1.5,a)*0.62;},
+    function(ph,th,t){return 0.236+0.01*Math.sin(Math.PI*t)-0.01*t*t*t;});
+  // 八字瀏海：左右兩片分開，中間分線處短、往外斜斜變長，貼著頭不外凸
+  return h2Merge([-1,1].map(function(sd){return h2Shell(sd>0?-0.05:-1.5,sd>0?1.5:0.05,44,14,0.32,function(ph){var a=Math.abs(ph),q=sd*ph;return (q<0.02?1.2:1.3+0.32*h2ss(0.02,0.8,a))+h2ss(0.95,1.5,a)*0.42;},
+    function(ph,th,t){var a=Math.abs(ph);return 0.241+(sd>0?0.003:0)+0.006*Math.sin(Math.PI*t)-0.008*t*t*t;});}));});}
+// 頭髮邊緣（和 capG 同一個公式），給長髮接在後面用，才不會有斷層
+function capTh(ph){var f=Math.cos(ph);return f<0?1.95+0.32*(-f):1.95-0.78*Math.pow(f,1.3);}
+function capR(ph,th,t){var f=Math.cos(ph);return 0.229*(1+0.035*Math.sin(th*1.3))*(1+0.05*Math.max(0,-f)*Math.sin(th))*(1+0.03*h2ss(0.6,1,t)*Math.max(0,-f));}
+// 長髮：從頭髮邊緣直接往下垂（跟頭頂是同一片，沒有接縫）；回傳的座標以 (0,0.2,0) 為中心
+function h2Drape(key,len,open,flare,rs){return sg('hdrape_'+key,function(){var nu=60,nv=12,pos=[],uv=[],idx=[];rs=rs||1;
+  for(var j=0;j<=nv;j++)for(var i=0;i<=nu;i++){var u=i/nu,ph=open+(Math.PI*2-2*open)*u,th=capTh(ph)-0.18,r=capR(ph,th,0.9)*rs,t=j/nv,f=Math.cos(ph),b=Math.max(0,-f);
+    var y0=r*Math.cos(th)*1.03,rr=r*Math.sin(th)*(1+flare*t)+0.004*Math.sin(ph*14)*t,y=y0-len*t-(0.07*b*b+0.02*(1-Math.abs(Math.sin((ph)*6))))*t*t;
+    if(j===0){rr=r*Math.sin(th);}
+    pos.push(rr*Math.sin(ph),y,rr*Math.cos(ph)*0.98-0.008);uv.push(u*3,1-t*0.85-0.05);}
+  for(j=0;j<nv;j++)for(i=0;i<nu;i++){var a=j*(nu+1)+i,c=a+nu+1;idx.push(a,c,a+1,c,c+1,a+1);}
+  var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();return g;});}
 function hairStrandTex(){return lt('hairStrand2',128,256,function(x,w,h){x.fillStyle='#d6d6d6';x.fillRect(0,0,w,h);var R=rng(12);
   for(var i=0;i<160;i++){var x0=R()*w,a=0.08+R()*0.22;x.strokeStyle=R()<0.5?'rgba(255,255,255,'+a+')':'rgba(0,0,0,'+(a*0.9)+')';x.lineWidth=0.6+R()*1.6;x.beginPath();x.moveTo(x0,0);x.bezierCurveTo(x0+(R()-0.5)*8,h*0.3,x0+(R()-0.5)*8,h*0.7,x0+(R()-0.5)*6,h);x.stroke();}
   var g=x.createLinearGradient(0,h*0.12,0,h*0.32);g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(0.5,'rgba(255,255,255,.75)');g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.fillRect(0,h*0.12,w,h*0.2);
@@ -2338,10 +2350,10 @@ function mkHuman(o){
   var root=new THREE.Group(),hips=new THREE.Group(),torso=new THREE.Group(),head=new THREE.Group(),ms={ua:[],fa:[],ha:[],th:[],sh:[],ft:[]};
   root.add(hips);hips.position.y=0.12;var hv=new THREE.Group();hv.scale.set(0.88,1,0.86);hips.add(hv);hips.add(torso);var tv=new THREE.Group();tv.scale.set(0.86,1,0.86);torso.add(tv);
   function pt(g,m,par,x,y,z){var me=new THREE.Mesh(g,m);me.position.set(x||0,y||0,z||0);me.castShadow=true;par.add(me);return me;}
-  ms.ch=pt(sg('chest2',function(){return bodyLathe([[0.176,0.04],[0.16,0.1],[0.148,0.16],[0.158,0.24],[0.176,0.32],[0.178,0.37],[0.165,0.42],[0.12,0.465],[0.06,0.49]],0.72,[0.33,0.05,0.022]);}),M.shirt,tv);
+  ms.ch=pt(sg('chest2',function(){return bodyLathe([[0.176,0.04],[0.16,0.1],[0.148,0.16],[0.158,0.24],[0.174,0.31],[0.178,0.36],[0.168,0.4],[0.14,0.43],[0.1,0.45],[0.07,0.46]],0.72,[0.31,0.05,0.012]);}),M.shirt,tv);
   ms.cl=pt(sg('collar',function(){var g=new THREE.TorusGeometry(0.085,0.022,6,16);g.rotateX(Math.PI/2);g.scale(1,1,0.8);return g;}),M.shirt,tv,0,0.455,0);
   ms.pv=pt(sg('pelvis2',function(){return bodyLathe([[0.15,-0.075],[0.172,-0.03],[0.176,0.0],[0.168,0.04],[0.16,0.065]],0.74);}),M.pants,tv);
-  pt(sg('neck3',function(){return cylG(0.058,0.064,0.08,12,0.49);}),M.skin,torso);
+  pt(sg('neck4',function(){var g=new THREE.LatheGeometry([[0.12,0.415],[0.1,0.44],[0.078,0.462],[0.064,0.485],[0.057,0.51],[0.055,0.56]].map(function(q){return new THREE.Vector2(q[0],q[1]);}),20);g.scale(1,1,0.8);g.computeVertexNormals();return g;}),M.skin,torso);
   head.position.y=0.51;head.scale.set(0.87,0.85,0.85);torso.add(head);
   pt(skullGeo(),M.skin,head);
   [-1,1].forEach(function(sd){pt(sg('ear',function(){var g=new THREE.SphereGeometry(0.04,8,6);g.scale(0.55,1,0.8);return g;}),M.skin,head,sd*0.198,0.18,0);});
