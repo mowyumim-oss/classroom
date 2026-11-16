@@ -271,6 +271,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 @keyframes glimsh{to{background-position:300% 0}}
 #gbasic .row .sh{font-size:13px;padding:5px 9px}
 #gwin.ward #gmain{max-height:50vh}
+.gspread{flex-wrap:wrap;max-width:560px;margin-left:auto;margin-right:auto}
 </style>
 </head>
 <body>
@@ -2043,7 +2044,7 @@ openNick('',false);
 var GCAT=null,GBY={},GIN={ok:false,coins:null,stars:0,inv:[],pity:{skin:0,hair:0,pet:0,lim:0},equip:{}},myEq={},myPet=null,GREADY=false;
 var EMO={skin_rainbow:'🌈',skin_gold:'✨',skin_night:'🌌',skin_cow:'🐄',skin_melon:'🍉',skin_check:'🏁',tie_red:'👔',tie_bow:'🦋',hair_flower:'🌼',hat_crown:'👑',hair_heart:'💖',hat_beanie:'🧢',hair_bow:'🎀',hair_ahoge:'🌱',hair_afro:'🦱',glasses_round:'👓',glasses_black:'🤓',glasses_sun:'🕶️',pet_ragdoll:'🐱',pet_shiba:'🐕',pet_penguin:'🐧',pet_chick:'🐥',pet_turtle:'🐢',pet_poop:'💩',pet_rock:'🪨',lim_phoenix:'🔥',lim_galaxy:'💫',lim_sakura:'🌸',lim_wings:'🕊️',lim_halo:'😇',lim_trail_star:'🌟',lim_cape:'🦸',lim_trail_bubble:'🫧',lim_trail_note:'🎵',lim_trail_paw:'🐾',lim_magical:'🪄',lim_idol:'🎤',lim_aurora:'🦄',lim_catears:'😺',lh_phoenix:'🪶',lh_galaxy:'🌙',lh_sakura:'🎎',lh_magical:'🎀',lh_idol:'🎶'};
 var RCOL=['#e8ecff','#b98cff','#ffd54a'],RNAME=['普通','稀有','最高'];
-var POOLEMO={skin:'🎨',hair:'💇',pet:'🐾',lim:'🌟'},POOLTAG={skin:'Ⅰ',hair:'Ⅱ',pet:'Ⅲ',lim:'★'},POOLSUB={skin:'THE MIRROR',hair:'THE CROWN',pet:'THE COMPANION',lim:'LIMITED'};
+var POOLEMO={skin:'🎨',hair:'💇',pet:'🐾',lim:'🌟',lp:'🔥',lg:'💫',ls:'🌸'},POOLTAG={skin:'Ⅰ',hair:'Ⅱ',pet:'Ⅲ',lim:'★',lp:'★',lg:'★',ls:'★'},POOLSUB={skin:'THE MIRROR',hair:'THE CROWN',pet:'THE COMPANION',lim:'LIMITED',lp:'PHOENIX',lg:'GALAXY',ls:'SAKURA'};
 var SUBS=[['basic','基本'],['skin','皮膚'],['lhair','限定髮型'],['body','身上'],['head','頭上'],['face','臉上'],['back','背後'],['trail','足跡'],['hairfx','髮色特效'],['pet','寵物']];
 function wrapA(a){return Math.atan2(Math.sin(a),Math.cos(a));}
 function gsid(v){return typeof v==='string'&&v.length<24?v:'';}
@@ -2329,7 +2330,7 @@ function updCur(){
   if(canPlay())s+='　⭐ '+(GIN.stars|0);
   gcur.textContent=s;
 }
-var GERR={guest:'登入帳號才能抽獎、收集造型',off:'抽獎功能尚未啟用（管理員需要先更新資料庫）',coins:'金幣不夠',stars:'星星幣不夠',busy:'操作太快了，等一下再試',dberr:'儲存失敗，這次沒有扣任何東西，請再試一次',bad:'無法執行'};
+var GERR={nopool:'這個卡池目前沒有開放',noslot:'穿戴欄位不對（請確認 server.js、gacha.js 都是最新版）',noitem:'伺服器上找不到這個造型（請確認 gacha.js 有上傳並重新部署）',notown:'你還沒有這個造型，要先抽到才能穿',guest:'登入帳號才能抽獎、收集造型',off:'抽獎功能尚未啟用（管理員需要先更新資料庫）',coins:'金幣不夠',stars:'星星幣不夠',busy:'操作太快了，等一下再試',dberr:'儲存失敗，這次沒有扣任何東西，請再試一次',bad:'無法執行'};
 
 function canOpen(){
   if(mode!=='walk'||uiMode){return false;}
@@ -2380,39 +2381,43 @@ function render(){
 
 // ── 抽獎畫面：常駐三池＋限定池（塔羅牌） ──
 function rateText(pk){
-  if(!GCAT)return '';var c=GCAT.cfg,lim=pk==='lim',t=(lim?c.limTop:c.topRate)/100,r=(lim?c.limRare:c.rareRate)/100;
+  if(!GCAT)return '';var c=GCAT.cfg,lim=isLimP(pk),t=(lim?c.limTop:c.topRate)/100,r=(lim?c.limRare:c.rareRate)/100;
   return '最高 '+t+'%　稀有 '+r+'%　普通 '+(Math.round((100-t-r)*10)/10)+'%';
 }
 function limLeft(){if(!GCAT||!GCAT.lim)return '';var ms=GCAT.lim.until-(synced?srvNow():Date.now()),d=Math.floor(ms/86400000),h=Math.floor(ms%86400000/3600000);return ms<=0?'即將換期':'本期剩 '+(d>0?d+' 天 ':'')+h+' 小時';}
 var LIMDESC={lim_phoenix:'三層拖地火焰禮服・羽毛裙擺・鳳凰頭冠・火焰翅膀・赤金髮色',lim_galaxy:'星河禮服・星光薄紗・環繞身體的星環・新月頭飾・星光披風・銀河髮色',lim_sakura:'櫻花振袖和服・大腰帶蝴蝶結・髮簪垂墜・和傘'};
+function isLimP(pk){return pk==='lim'||!!(GCAT&&GCAT.ban&&GCAT.ban[pk]);}
+function openPools(){return (GCAT&&GCAT.open)||['skin','hair','pet','lim'];}
 function renderDraw(){
   if(!GCAT){gmain.appendChild(ge('div','gnote','連線中…'));return;}
   var cfg=GCAT.cfg,spread=ge('div','gspread');
-  ['skin','hair','pet','lim'].forEach(function(pk){
+  if(openPools().indexOf(gpool)<0)gpool='skin';
+  openPools().forEach(function(pk){
     if(!GCAT.pools[pk])return;
-    var c=ge('button','tc'+(pk===gpool?' sel':'')+(pk==='lim'?' lim':''));
-    c.appendChild(ge('div','tk',pk==='lim'?'限定':'常駐'));c.appendChild(ge('div','te',POOLEMO[pk]));
+    var c=ge('button','tc'+(pk===gpool?' sel':'')+(isLimP(pk)?' lim':''));
+    c.appendChild(ge('div','tk',isLimP(pk)?'限定':'常駐'));c.appendChild(ge('div','te',POOLEMO[pk]));
     c.appendChild(ge('div','tl',GCAT.pools[pk]));c.appendChild(ge('div','ts',POOLSUB[pk]));
     c.addEventListener('click',function(){gpool=pk;beep([660],0.08);render();});
     spread.appendChild(c);
   });
   gmain.appendChild(spread);
-  var lim=gpool==='lim',pmax=lim?cfg.limPity:cfg.pity,L=GCAT.lim;
+  var lim=isLimP(gpool),pmax=lim?cfg.limPity:cfg.pity,pkey=lim?'lim':gpool,L=GCAT.lim;
+  if(lim&&GCAT.ban&&GCAT.ban[gpool])L={id:GCAT.ban[gpool],fixed:1};
   if(lim&&L){var f=GBY[L.id]||{n:L.id},nx=GBY[L.next]||{n:''},bn=ge('div','glim');
-    bn.appendChild(ge('div','gl1','✦ 本期限定 ✦'));bn.appendChild(ge('div','gl2',(EMO[L.id]||'')+' '+f.n));
+    bn.appendChild(ge('div','gl1',L.fixed?'✦ 限定池（目前三個限定池同時開放）✦':'✦ 本期限定 ✦'));bn.appendChild(ge('div','gl2',(EMO[L.id]||'')+' '+f.n));
     bn.appendChild(ge('div','gl3',LIMDESC[L.id]||''));
     bn.appendChild(ge('div','gl3','＋飄帶・華麗腳印・光環粒子・互動與跳躍特效'));
     var gf=GBY[L.id]&&GBY[L.id].gift;if(gf)bn.appendChild(ge('div','gl3','🎁 抽到就送配套髮型：'+(EMO[gf]||'')+' '+((GBY[gf]||{}).n||'')));
-    bn.appendChild(ge('div','gl3',limLeft()+'　下期：'+(EMO[L.next]||'')+' '+nx.n));
+    if(!L.fixed)bn.appendChild(ge('div','gl3',limLeft()+'　下期：'+(EMO[L.next]||'')+' '+nx.n));
     var tb=ge('button','gb main','👗 試穿 20 秒');tb.style.marginTop='6px';tb.addEventListener('click',function(){trialK=L.id;trialH=(GBY[L.id]||{}).gift||'';trialUntil=performance.now()+20000;refreshSelf();setView('ward');say('試穿中！20 秒後換回來');setTimeout(function(){trialK='';refreshSelf();},20050);});bn.appendChild(tb);
     gmain.appendChild(bn);}
   var box=ge('div','ginfo');
-  var pity=GIN.pity[gpool]|0,left=pmax-pity;
+  var pity=GIN.pity[pkey]|0,left=pmax-pity;
   var top=lim&&L?GBY[L.id]:GCAT.items.filter(function(i){return i.pool===gpool&&i.r===2;})[0];
   box.appendChild(ge('div','gt1','最高獎：'+(top?EMO[top.id]+' '+top.n:'')));
   var bar=ge('div','gbar'),fill=ge('div','gfill');fill.style.width=Math.min(100,pity/pmax*100)+'%';bar.appendChild(fill);box.appendChild(bar);
-  box.appendChild(ge('div','gsm',canPlay()?('保底進度 '+pity+' / '+pmax+'　'+(left<=1?'下一抽必得'+(lim?'本期限定':'最高獎')+'！':'再 '+left+' 抽必得'+(lim?'本期限定':'最高獎'))):'登入帳號後可以抽獎、累積保底'));
-  box.appendChild(ge('div','gsm',rateText(gpool)+(lim?'（限定池保底不會因為換期歸零）':'')));
+  box.appendChild(ge('div','gsm',canPlay()?('保底進度 '+pity+' / '+pmax+'　'+(left<=1?'下一抽必得'+(lim?'本期限定':'最高獎')+'！':'再 '+left+' 抽必得'+(lim?'本期限定':'最高獎'))+(lim?'（三個限定池共用保底）':'')):'登入帳號後可以抽獎、累積保底'));
+  box.appendChild(ge('div','gsm',rateText(gpool)));
   box.appendChild(ge('div','gsm','重複獲得轉成星星幣：普通 +'+cfg.dupStars[0]+'　稀有 +'+cfg.dupStars[1]+'　'+(lim?'限定皮膚 +'+cfg.limDupTop:'最高 +'+cfg.dupStars[2])+'　（'+cfg.starOne+' ⭐ 可兌換一抽）'));
   gmain.appendChild(box);
   var pr=ge('div','gpay');
@@ -2429,11 +2434,11 @@ function renderDraw(){
   });
   gmain.appendChild(acts);
   if(!canPlay())gmain.appendChild(ge('div','gnote',GIN.ok===false&&typeof isAcct!=='undefined'&&isAcct?GERR.off:GERR.guest));
-  var col=ge('div','gcol'),its=GCAT.items.filter(function(i){return i.pool===gpool;});
-  col.appendChild(ge('div','gsm','收藏　'+its.filter(function(i){return owned(i.id);}).length+' / '+its.length+(lim?'　（其他兩款限定皮膚要等它們的那一期）':'')));
+  var col=ge('div','gcol'),its=GCAT.items.filter(function(i){return i.pool===(lim?'lim':gpool)&&(!lim||i.r<2||i.id===L.id);});
+  col.appendChild(ge('div','gsm','收藏　'+its.filter(function(i){return owned(i.id);}).length+' / '+its.length));
   var row=ge('div','gchips');
   its.sort(function(a,b){return b.r-a.r;}).forEach(function(i){
-    var c=ge('span','gchip'+(owned(i.id)?'':' no'),(EMO[i.id]||'？')+' '+i.n+(lim&&i.r===2?(L&&i.id===L.id?'（本期）':'（其他期）'):''));c.style.borderColor=RCOL[i.r];row.appendChild(c);
+    var c=ge('span','gchip'+(owned(i.id)?'':' no'),(EMO[i.id]||'？')+' '+i.n);c.style.borderColor=RCOL[i.r];row.appendChild(c);
   });
   col.appendChild(row);gmain.appendChild(col);
 }
@@ -2601,7 +2606,7 @@ function renderWard(){
   });
   gmain.appendChild(grid);
 }
-function equip(slot,id){if(pvw()&&!canPlay()){if(id)myEq[slot]=id;else delete myEq[slot];refreshSelf();render();return;}net.gacha({a:'equip',slot:slot,id:id});}
+function equip(slot,id){net.gacha({a:'equip',slot:slot,id:id});}
 
 // ── 伺服器訊息 ──
 net.onG(function(m){

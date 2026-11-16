@@ -65,7 +65,7 @@ var BY_ID = {};
 ITEMS.forEach(function (it) { BY_ID[it.id] = it; });
 
 var CFG = {
-  preview: true,                    // ★ 預覽模式：true＝所有造型（含限定）大家都能直接穿；檢查完改成 false 就恢復要抽才有
+  allLim: true,                     // ★ true＝三個限定池（鳳凰、星河、櫻吹雪）同時開放可以抽；false＝只開「本週限定」一個池，每週一輪換
   coinOne: 8, coinTen: 72,          // 金幣：單抽、十抽
   starOne: 20, starTen: 180,        // 星星幣：單抽、十抽（重複普通 5 次或重複稀有 4 次 ＝ 20 星星幣 ＝ 一抽）
   pity: 30,                         // 常駐池：第 30 抽（該池連續沒中最高獎的第 30 抽）保底最高獎
@@ -75,7 +75,14 @@ var CFG = {
   limTop: 150, limRare: 2000,       // 限定池：最高 1.5%、稀有 20%
   limDupTop: 30                     // 限定池最高獎重複時給的星星幣
 };
-function pityOf(pool) { return pool === 'lim' ? CFG.limPity : CFG.pity; }
+// 限定池：allLim 開著時分成三個池（每池最高獎固定一款），關掉時只有一個每週輪換的 lim 池；保底共用 lim 的計數
+var LIMBAN = { lp: 'lim_phoenix', lg: 'lim_galaxy', ls: 'lim_sakura' };
+var LIMNAME = { lp: '鳳凰', lg: '星河', ls: '櫻吹雪' };
+function isLim(pool) { return pool === 'lim' || Object.prototype.hasOwnProperty.call(LIMBAN, pool); }
+function pityKey(pool) { return isLim(pool) ? 'lim' : pool; }
+function openPools() { return STD.concat(CFG.allLim ? Object.keys(LIMBAN) : ['lim']); }
+function poolOk(pool) { return typeof pool === 'string' && openPools().indexOf(pool) >= 0; }
+function pityOf(k) { return k === 'lim' ? CFG.limPity : CFG.pity; }
 
 // 本週限定：週一 00:00（台灣時間）換下一款
 var WEEK = 7 * 86400000, MON0 = Date.UTC(2024, 0, 1) - 8 * 3600000; // 2024-01-01 是週一，台灣時間零點
@@ -86,8 +93,9 @@ function featured(now) {
 }
 
 function pick(pool, r) {
-  if (pool === 'lim' && r === 2) return BY_ID[featured(Date.now()).id];
-  var list = ITEMS.filter(function (it) { return it.pool === pool && it.r === r; });
+  if (isLim(pool) && r === 2) return BY_ID[LIMBAN[pool] || featured(Date.now()).id];
+  var src = isLim(pool) ? 'lim' : pool;
+  var list = ITEMS.filter(function (it) { return it.pool === src && it.r === r; });
   return list[crypto.randomInt(list.length)];
 }
 
@@ -97,9 +105,9 @@ function draw(pool, pity, inv, n) {
   var owned = {}, out = [], stars = 0, list = inv.slice();
   inv.forEach(function (x) { owned[x] = 1; });
   for (var i = 0; i < n; i++) {
-    var cnt = pity + 1, r, lim = pool === 'lim';
+    var cnt = pity + 1, r, lim = isLim(pool);
     var top = lim ? CFG.limTop : CFG.topRate, rare = lim ? CFG.limRare : CFG.rareRate;
-    if (cnt >= pityOf(pool)) r = 2;
+    if (cnt >= pityOf(pityKey(pool))) r = 2;
     else {
       var x = crypto.randomInt(10000);
       r = x < top ? 2 : x < top + rare ? 1 : 0;
@@ -117,7 +125,8 @@ function draw(pool, pity, inv, n) {
 
 // 前端用的目錄（會傳給每位玩家）
 function catalog() {
-  return { items: ITEMS, pools: POOLS, std: STD, cfg: CFG, slots: SLOTS, lim: featured(Date.now()) };
+  var pools = Object.assign({}, POOLS, LIMNAME);
+  return { items: ITEMS, pools: pools, std: STD, open: openPools(), ban: LIMBAN, cfg: CFG, slots: SLOTS, lim: featured(Date.now()) };
 }
 
 // 讀資料庫的資料時整理成安全的格式
@@ -136,9 +145,9 @@ function cleanEquip(v, inv) {
   var o = {};
   if (v && typeof v === 'object') SLOTS.forEach(function (s) {
     var id = v[s];
-    if (typeof id === 'string' && BY_ID[id] && BY_ID[id].slot === s && (CFG.preview || inv.indexOf(id) >= 0)) o[s] = id;
+    if (typeof id === 'string' && BY_ID[id] && BY_ID[id].slot === s && inv.indexOf(id) >= 0) o[s] = id;
   });
   return o;
 }
 
-module.exports = { POOLS: POOLS, STD: STD, SLOTS: SLOTS, featured: featured, ITEMS: ITEMS, BY_ID: BY_ID, CFG: CFG, draw: draw, catalog: catalog, cleanInv: cleanInv, cleanPity: cleanPity, cleanEquip: cleanEquip };
+module.exports = { poolOk: poolOk, pityKey: pityKey, POOLS: POOLS, STD: STD, SLOTS: SLOTS, featured: featured, ITEMS: ITEMS, BY_ID: BY_ID, CFG: CFG, draw: draw, catalog: catalog, cleanInv: cleanInv, cleanPity: cleanPity, cleanEquip: cleanEquip };

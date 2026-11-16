@@ -76,26 +76,27 @@ function onGacha(ws, m) {
   var compute;
   if (m.a === 'draw') {
     var pool = typeof m.pool === 'string' ? m.pool : '', n = Number(m.n), pay = m.pay === 'star' ? 'star' : 'coin', CF = G.CFG;
-    if (!Object.prototype.hasOwnProperty.call(G.POOLS, pool) || !(n === 1 || n === 10)) { gfail(ws, 'bad'); return; }
+    if (!G.poolOk(pool) || !(n === 1 || n === 10)) { gfail(ws, 'nopool'); return; }
     var cost = pay === 'coin' ? (n === 1 ? CF.coinOne : CF.coinTen) : (n === 1 ? CF.starOne : CF.starTen);
     compute = function (row) {
       if (pay === 'coin' && row.coins < cost) return { err: 'coins' };
       if (pay === 'star' && row.stars < cost) return { err: 'stars' };
-      var r = G.draw(pool, row.pity[pool] | 0, row.inv, n);
-      var pity = Object.assign({}, row.pity); pity[pool] = r.pity;
+      var pk = G.pityKey(pool), r = G.draw(pool, row.pity[pk] | 0, row.inv, n);
+      var pity = Object.assign({}, row.pity); pity[pk] = r.pity;
       var coins = row.coins - (pay === 'coin' ? cost : 0), stars = row.stars - (pay === 'star' ? cost : 0) + r.stars;
       return { patch: { coins: coins, stars: stars, inv: r.inv, pity: pity },
         apply: { coins: coins, stars: stars, inv: r.inv, pity: pity, equip: row.equip }, out: { n: n, res: r.res } };
     };
   } else if (m.a === 'equip') {
     var slot = m.slot, id = m.id;
-    if (typeof slot !== 'string' || G.SLOTS.indexOf(slot) < 0 || !(id === null || typeof id === 'string')) { gfail(ws, 'bad'); return; }
+    if (typeof slot !== 'string' || G.SLOTS.indexOf(slot) < 0 || !(id === null || typeof id === 'string')) { gfail(ws, 'noslot'); return; }
     compute = function (row) {
       var eq = Object.assign({}, row.equip);
       if (id === null) delete eq[slot];
       else {
         var it = Object.prototype.hasOwnProperty.call(G.BY_ID, id) ? G.BY_ID[id] : null;
-        if (!it || it.slot !== slot || row.inv.indexOf(id) < 0) return { err: 'bad' };
+        if (!it || it.slot !== slot) return { err: 'noitem' };
+        if (row.inv.indexOf(id) < 0) return { err: 'notown' };
         eq[slot] = id;
       }
       return { patch: { equip: eq }, apply: { coins: row.coins, stars: row.stars, inv: row.inv, pity: row.pity, equip: eq } };
@@ -1448,7 +1449,7 @@ wss.on('connection', function (ws) {
 
   var peers = [];
   clients.forEach(function (c) { if (c !== ws && c.nick && c.presence) peers.push({ peer: c.id, presence: pubPresence(c) }); });
-  sendTo(ws, { t: 'hello', v: '2.1', id: ws.id, peers: peers, boards: boards });
+  sendTo(ws, { t: 'hello', v: '2.3', id: ws.id, peers: peers, boards: boards });
   sendLabels(ws);
   var gj = gcatJson();
   if (gj && ws.readyState === 1) ws.send(gj);
